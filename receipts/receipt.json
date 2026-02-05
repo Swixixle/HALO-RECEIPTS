@@ -1,8 +1,0 @@
-HALO RECEIPT
-{
-  "id": "HALO-1770275101878",
-  "timestamp": "2026-02-05T07:05:01.878Z",
-  "action": "INITIALIZE_PROJECT",
-  "intent": "Prove HALO receipts can exist as executable artifacts",
-  "integrity": "unverified"
-}
