@@ -7,14 +7,29 @@ open README.md
 HALO-RECEIPTS is an early-stage project for capturing, storing, and reasoning about “receipts” — structured records of actions, decisions, or events that should remain inspectable over time.
 
 Right now, this repository is intentionally minimal. The goal is to establish a clean foundation before building features.
+## Non-Goals (for now)
 
+HALO-RECEIPTS is intentionally minimal. It does not attempt to:
+
+- Replace logging systems
+- Act as a database
+- Automatically infer meaning or intent
+- Provide real-time guarantees
+
+Its role is to create durable, inspectable attestations — nothing more.
 ---
 
 ## Status
 
 🚧 **Very early / scaffold stage**
 
-- Repository initialized
+- Repository initializedgit add README.md
+git commit -m "Define HALO-RECEIPTS purpose in README"
+git push
+
+
+
+
 - Workspace + GitHub authentication confirmed
 - No application code yet
 
@@ -42,22 +57,40 @@ Planned additions may include:
 
 ---
 
+
 ## Getting Started
 
 ```bash
 git clone https://github.com/Swixixle/HALO-RECEIPTS.git
 cd HALO-RECEIPTS
+git status
+git add README.md
+git commit -m "Define HALO-RECEIPTS purpose and getting started"
+git pushKey difference:
+- ` ```bash ` ✅ correct
+- ` ``` bash ` ❌ broken
+
 ---
 
-### 4) Save the file
+## Then do this (slow, one step at a time)
 
----
+### 1️⃣ Save the file
+- **Cmd + S**
+- Close TextEdit
 
-### 5) Commit it (this locks the win)
-Back in Terminal:
+### 2️⃣ Commit (Terminal)
+From the repo root:
 
 ```bash
 git status
 git add README.md
-git commit -m "Add initial README"
+git commit -m "Fix README markdown formatting"
 git push
+
+
+
+
+
+
+
+
