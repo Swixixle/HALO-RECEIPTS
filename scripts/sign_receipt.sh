@@ -10,7 +10,7 @@ RECEIPT="$1"
 PAYLOAD="${RECEIPT%.json}.payload"
 SIG="${PAYLOAD}.sig"
 
-# Regenerate deterministically (avoid overwrite prompts / stale sigs)
+# Always regenerate cleanly
 rm -f "$PAYLOAD" "$SIG"
 
 python3 scripts/receipt_payload.py "$RECEIPT" > "$PAYLOAD"

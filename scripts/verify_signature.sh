@@ -14,10 +14,15 @@ ALLOWED="$3"
 PAYLOAD="${RECEIPT%.json}.payload"
 SIG="${PAYLOAD}.sig"
 
-# Recompute payload and verify signature matches it
-python3 scripts/receipt_payload.py "$RECEIPT" > "$PAYLOAD.tmp"
+if [[ ! -f "$SIG" ]]; then
+  echo "❌ Missing signature file: $SIG"
+  echo "Run: scripts/sign_receipt.sh $RECEIPT"
+  exit 2
+fi
 
-ssh-keygen -Y verify -f "$ALLOWED" -I "$SIGNER_ID" -n halo-receipt -s "$SIG" < "$PAYLOAD.tmp" >/dev/null
+# Recompute payload deterministically from receipt
+python3 scripts/receipt_payload.py "$RECEIPT" > "$PAYLOAD"
 
-rm -f "$PAYLOAD.tmp"
+ssh-keygen -Y verify -f "$ALLOWED" -I "$SIGNER_ID" -n halo-receipt -s "$SIG" < "$PAYLOAD" >/dev/null
+
 echo "✅ SIGNATURE VERIFIED"
