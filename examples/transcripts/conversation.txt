@@ -1,0 +1,2 @@
+User: What is the capital of France?
+Assistant: The capital of France is Paris.
