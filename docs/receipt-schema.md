@@ -70,3 +70,54 @@ Recommended: `halo-receipt_<YYYYMMDD>_<shortHash>.json`
 ## Security notes
 - Hash-only receipts detect edits but do not prove who issued them.
 - Signatures add issuer authenticity but are not required for v0.1.
+cat > examples/receipts/receipt.sample.json << 'EOF'
+{
+  "schema_version": "0.1",
+  "created_at": "2026-02-05T18:00:00Z",
+  "content_hash": {
+    "alg": "sha256",
+    "value": "REPLACE_ME_WITH_REAL_HASH"
+  },
+  "canonicalization": {
+    "name": "halo-text-v0.1",
+    "rules": [
+      "utf-8 encoding",
+      "normalize line endings to \\n",
+      "trim trailing whitespace per line",
+      "ensure exactly one final newline at EOF",
+      "no BOM"
+    ]
+  },
+  "subject": {
+    "type": "conversation",
+    "content_type": "text/plain",
+    "byte_length": 0
+  },
+  "issuer": {
+    "name": "HALO Receipts (sample)"
+  }
+}
+EOF
+mkdir -p examples/transcripts
+cat > examples/transcripts/conversation.txt << 'EOF'
+User: What is the capital of France?
+Assistant: The capital of France is Paris.
+EOF
+wc -c examples/transcripts/conversation.txt
+shasum -a 256 examples/transcripts/conversation.txt
+HASH=$(shasum -a 256 examples/transcripts/conversation.txt | awk '{print $1}')
+BYTES=$(wc -c < examples/transcripts/conversation.txt | tr -d ' ')
+
+python3 - <<PY
+import json
+p="examples/receipts/receipt.sample.json"
+with open(p,"r",encoding="utf-8") as f:
+    r=json.load(f)
+r["content_hash"]["value"]= "${HASH}"
+r["subject"]["byte_length"]= int("${BYTES}")
+with open(p,"w",encoding="utf-8") as f:
+    json.dump(r,f,indent=2)
+    f.write("\n")
+print("Wrote hash + byte_length into receipt.sample.json")
+PY
+cat examples/receipts/receipt.sample.json

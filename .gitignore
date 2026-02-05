@@ -1,13 +1,57 @@
+# Runtime output (generated) — ignore only at repo root
+/receipts/
+
+# OS / editor noise
 .DS_Store
 *.swp
 *.swo
 
-.DS_Store
-receipts/
 
-# Generated receipts / runtime output
-receipts/
-*.receipt.json
 
-# OS noise
-.DS_Store
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Signing keys (DO NOT COMMIT PRIVATE KEYS)
+keys/halo_ed25519
+keys/halo_ed25519.pub
+
+# Signing keys (DO NOT COMMIT PRIVATE KEYS)
+keys/halo_ed25519
+keys/halo_ed25519.pub
+
+# Generated signature artifacts (optional: keep if you want examples committed)
+# If you want to commit sample payload+sig, comment these out.
+# *.payload
+# *.payload.sig
