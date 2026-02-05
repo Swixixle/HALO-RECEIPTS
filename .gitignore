@@ -4,3 +4,10 @@
 
 .DS_Store
 receipts/
+
+# Generated receipts / runtime output
+receipts/
+*.receipt.json
+
+# OS noise
+.DS_Store
