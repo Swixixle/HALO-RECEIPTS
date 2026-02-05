@@ -88,7 +88,38 @@ git commit -m "Fix README markdown formatting"
 git push
 
 
+## Demo: Signing & Verifying a Receipt
 
+This demo shows how a receipt can be cryptographically signed and later verified
+without trusting the environment or the original author.
+
+### 1) Sign a receipt
+
+```bash
+scripts/sign_receipt.sh examples/receipts/receipt.sample.json
+scripts/verify_signature.sh \
+  examples/receipts/receipt.sample.json \
+  halo-signer \
+  keys/allowed_signers
+scripts/verify_signature.sh \
+  examples/receipts/receipt.sample.json \
+  halo-signer \
+  keys/allowed_signers
+✅ SIGNATURE VERIFIED
+That’s it. **Do not explain more.**
+
+---
+
+## Then lock it (slow, clean)
+
+Back in Terminal:
+
+```bash
+git status
+git add README.md
+git commit -m "Document receipt signing and signature verification demo"
+git push
+git status
 
 
 
