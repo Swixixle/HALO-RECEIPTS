@@ -46,3 +46,4 @@ keys/halo_ed25519.pub
 # If you want to commit sample payload+sig, comment these out.
 # *.payload
 # *.payload.sig
+.venv/
