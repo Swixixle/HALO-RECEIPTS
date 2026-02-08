@@ -96,7 +96,6 @@ try:
 except jsonschema.ValidationError as e:
     die(str(e).splitlines()[0])
 
-print("✅ SCHEMA OK")
 PY
 
 
