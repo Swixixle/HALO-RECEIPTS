@@ -1,0 +1,18 @@
+{
+  "receipt_id": "enroll-0001",
+  "type": "machine_enrollment",
+  "issued_at": "2026-02-08T00:00:00Z",
+  "issuer": "halo-signer",
+  "subject": {
+    "machine_name": "alex-mbp",
+    "owner": "alex",
+    "purpose": "primary signer workstation"
+  },
+  "payload": {
+    "public_key_ref": "keys/allowed_signers/halo-signer.pub",
+    "profile_hash": "REPLACE_WITH_PROFILE_HASH"
+  },
+  "hash": "REPLACE_WITH_CANONICAL_HASH",
+  "signature": "REPLACE_WITH_SIGNATURE"
+}
+
