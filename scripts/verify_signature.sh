@@ -11,6 +11,12 @@ RECEIPT="$1"
 SIGNER_ID="$2"
 ALLOWED="$3"
 
+# Prefer repo-local venv python if it exists (so jsonschema works without activation)
+PYTHON="python3"
+if [[ -x ".venv/bin/python" ]]; then
+  PYTHON=".venv/bin/python"
+fi
+
 PAYLOAD="${RECEIPT%.json}.payload"
 SIG="${PAYLOAD}.sig"
 
@@ -20,8 +26,8 @@ if [[ ! -f "$SIG" ]]; then
   exit 2
 fi
 
-# JSON Schema validation (requires jsonschema installed in your active python env)
-python3 - <<'PY' "$RECEIPT"
+# JSON Schema validation
+"$PYTHON" - <<'PY' "$RECEIPT"
 import json, sys
 from pathlib import Path
 
@@ -45,7 +51,9 @@ except Exception as e:
 try:
     import jsonschema
 except Exception:
-    die("python module 'jsonschema' not installed. Activate venv and run: python -m pip install jsonschema")
+    die("python module 'jsonschema' not installed. Create venv and install:\n"
+        "  python3 -m venv .venv\n"
+        "  .venv/bin/python -m pip install -U pip jsonschema")
 
 try:
     jsonschema.validate(instance=r, schema=schema)
@@ -56,10 +64,9 @@ print("✅ SCHEMA OK")
 PY
 
 # Recompute payload deterministically from receipt
-python3 scripts/receipt_payload.py "$RECEIPT" > "$PAYLOAD"
+"$PYTHON" scripts/receipt_payload.py "$RECEIPT" > "$PAYLOAD"
 
-# Verify signature over payload
+# Verify signature (OpenSSH signature)
 ssh-keygen -Y verify -f "$ALLOWED" -I "$SIGNER_ID" -n halo-receipt -s "$SIG" < "$PAYLOAD" >/dev/null
 
 echo "✅ SIGNATURE VERIFIED"
-
