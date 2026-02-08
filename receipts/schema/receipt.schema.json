@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halo-receipts/receipt.schema.json",
+  "title": "HALO Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_id",
+    "type",
+    "issued_at",
+    "issuer",
+    "subject",
+    "payload",
+    "hash",
+    "signature"
+  ],
+  "properties": {
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "type": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "issuer": { "type": "string", "minLength": 1 },
+    "subject": { "type": "object" },
+    "payload": { "type": "object" },
+    "hash": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "minLength": 1 }
+  }
+}
+
