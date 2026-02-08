@@ -10,12 +10,18 @@ RECEIPT="$1"
 PAYLOAD="${RECEIPT%.json}.payload"
 SIG="${PAYLOAD}.sig"
 
-# Always regenerate cleanly
+SIGNING_KEY="$HOME/.ssh/halo_receipts"
+
+if [[ ! -f "$SIGNING_KEY" ]]; then
+  echo "❌ Missing signing key: $SIGNING_KEY"
+  exit 2
+fi
+
 rm -f "$PAYLOAD" "$SIG"
 
 python3 scripts/receipt_payload.py "$RECEIPT" > "$PAYLOAD"
-ssh-keygen -Y sign -f keys/halo_ed25519 -n halo-receipt "$PAYLOAD" >/dev/null
+
+ssh-keygen -Y sign -f "$SIGNING_KEY" -n halo-receipt "$PAYLOAD" >/dev/null
 
 echo "✅ SIGNED"
-echo "payload: $PAYLOAD"
-echo "sig:     $SIG"
+
