@@ -45,3 +45,16 @@ Receipt format changes require:
 - backward compatibility note,
 - governance decision record.
 
+## Canonical Hashing (Normative)
+The receipt `hash` MUST be computed over a canonical JSON representation of the receipt **excluding** the `hash` and `signature` fields.
+
+Canonical JSON rules:
+- UTF-8 encoding
+- Object keys sorted lexicographically
+- No insignificant whitespace
+- Arrays preserved in given order
+
+Hash algorithm:
+- SHA-256 over the canonical JSON bytes
+- Encode `hash` as lowercase hex
+
