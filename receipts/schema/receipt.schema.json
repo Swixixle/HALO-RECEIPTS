@@ -1,28 +1,40 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://halo-receipts/receipt.schema.json",
-  "title": "HALO Receipt",
+  "title": "HALO Receipt (current signing model)",
   "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "receipt_id",
-    "type",
-    "issued_at",
-    "issuer",
-    "subject",
-    "payload",
-    "hash",
-    "signature"
-  ],
+  "additionalProperties": true,
+  "required": ["content_hash", "subject"],
   "properties": {
-    "receipt_id": { "type": "string", "minLength": 1 },
-    "type": { "type": "string", "minLength": 1 },
-    "issued_at": { "type": "string", "format": "date-time" },
-    "issuer": { "type": "string", "minLength": 1 },
-    "subject": { "type": "object" },
-    "payload": { "type": "object" },
-    "hash": { "type": "string", "minLength": 1 },
-    "signature": { "type": "string", "minLength": 1 }
+    "schema_version": { "type": ["string", "null"] },
+    "created_at": { "type": ["string", "null"], "format": "date-time" },
+    "content_hash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "value"],
+      "properties": {
+        "alg": { "type": "string", "const": "sha256" },
+        "value": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["byte_length"],
+      "properties": {
+        "byte_length": { "type": "integer", "minimum": 0 },
+        "content_type": { "type": ["string", "null"] },
+        "type": { "type": ["string", "null"] }
+      }
+    },
+    "issuer": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "key_id": { "type": ["string", "null"] }
+      }
+    }
   }
 }
 
