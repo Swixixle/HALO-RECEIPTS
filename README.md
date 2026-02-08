@@ -29,99 +29,40 @@ git push
 
 
 
+# HALO-RECEIPTS
 
-- Workspace + GitHub authentication confirmed
-- No application code yet
+HALO-RECEIPTS is a cryptographic receipt and verification system for proving
+that a specific byte-exact artifact existed at a specific time and was attested
+to by an authorized signer.
 
-This repo currently serves as a grounding point for development.
+It is designed for:
+- AI transcripts
+- Machine attestations
+- Governance-grade audit trails
+- Deterministic verification pipelines
 
----
-
-## Purpose (Draft)
-
-The long-term intent of HALO-RECEIPTS is to:
-
-- Create a clear, auditable record of actions or outputs
-- Preserve context instead of losing it to chat logs, memory, or screenshots
-- Make reasoning and accountability inspectable rather than implicit
-
-Details will evolve as the project takes shape.
+This repository is infrastructure, not a demo.
 
 ---
 
-## Repository Structure (Current)
-Planned additions may include:
-- `src/`
-- `docs/`
-- `.gitignore`
+## Core Guarantees
+
+A valid HALO receipt guarantees:
+
+- The **exact byte content** of a subject artifact
+- A **cryptographic hash** over those bytes
+- A **deterministic, canonical payload**
+- A **verifiable SSH signature** by an authorized signer
+- **Schema-validated structure** prior to verification
+
+It explicitly does **not** guarantee:
+- Truth of the content
+- Intent of the signer
+- Identity beyond key ownership
+- Protection against a compromised private key
 
 ---
 
-
-## Getting Started
-
-```bash
-git clone https://github.com/Swixixle/HALO-RECEIPTS.git
-cd HALO-RECEIPTS
-git status
-git add README.md
-git commit -m "Define HALO-RECEIPTS purpose and getting started"
-git pushKey difference:
-- ` ```bash ` ✅ correct
-- ` ``` bash ` ❌ broken
-
----
-
-## Then do this (slow, one step at a time)
-
-### 1️⃣ Save the file
-- **Cmd + S**
-- Close TextEdit
-
-### 2️⃣ Commit (Terminal)
-From the repo root:
-
-```bash
-git status
-git add README.md
-git commit -m "Fix README markdown formatting"
-git push
-
-
-## Demo: Signing & Verifying a Receipt
-
-This demo shows how a receipt can be cryptographically signed and later verified
-without trusting the environment or the original author.
-
-### 1) Sign a receipt
-
-```bash
-scripts/sign_receipt.sh examples/receipts/receipt.sample.json
-scripts/verify_signature.sh \
-  examples/receipts/receipt.sample.json \
-  halo-signer \
-  keys/allowed_signers
-scripts/verify_signature.sh \
-  examples/receipts/receipt.sample.json \
-  halo-signer \
-  keys/allowed_signers
-✅ SIGNATURE VERIFIED
-That’s it. **Do not explain more.**
-
----
-
-## Then lock it (slow, clean)
-
-Back in Terminal:
-
-```bash
-git status
-git add README.md
-git commit -m "Document receipt signing and signature verification demo"
-git push
-git status
-
-
-
+## Repository Structure
 
 
