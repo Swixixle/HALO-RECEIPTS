@@ -4,6 +4,9 @@
 .DS_Store
 *.swp
 *.swo
+# Generated signing artifacts
+*.payload
+*.payload.sig
 
 
 
