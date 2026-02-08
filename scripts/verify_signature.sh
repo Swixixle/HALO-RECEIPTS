@@ -64,8 +64,41 @@ if iss is not None and not isinstance(iss, dict):
 print("✅ RECEIPT SHAPE OK")
 PY
 
-# Recompute payload deterministically from receipt
-python3 scripts/receipt_payload.py "$RECEIPT" > "$PAYLOAD"
+# JSON Schema validation
+python3 - <<'PY' "$RECEIPT"
+import json, sys
+from pathlib import Path
+
+receipt_path = Path(sys.argv[1])
+schema_path = Path("receipts/schema/receipt.schema.json")
+
+def die(msg, code=2):
+    print(f"❌ INVALID RECEIPT: {msg}")
+    sys.exit(code)
+
+try:
+    r = json.loads(receipt_path.read_text(encoding="utf-8"))
+except Exception as e:
+    die(f"failed to read JSON: {e}")
+
+try:
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+except Exception as e:
+    die(f"failed to read schema {schema_path}: {e}")
+
+try:
+    import jsonschema
+except Exception:
+    die("python module 'jsonschema' not installed. Install with: python3 -m pip install jsonschema", 2)
+
+try:
+    jsonschema.validate(instance=r, schema=schema)
+except jsonschema.ValidationError as e:
+    die(str(e).splitlines()[0])
+
+print("✅ SCHEMA OK")
+PY
+
 
 ssh-keygen -Y verify -f "$ALLOWED" -I "$SIGNER_ID" -n halo-receipt -s "$SIG" < "$PAYLOAD" >/dev/null
 
