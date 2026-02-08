@@ -1,68 +1,51 @@
 # HALO-RECEIPTS
-first time
-cd ~/Workspace/HALO-RECEIPTS
-open README.md
-# HALO-RECEIPTS
 
-HALO-RECEIPTS is an early-stage project for capturing, storing, and reasoning about “receipts” — structured records of actions, decisions, or events that should remain inspectable over time.
+HALO-RECEIPTS is a minimal cryptographic receipt system.
 
-Right now, this repository is intentionally minimal. The goal is to establish a clean foundation before building features.
-## Non-Goals (for now)
+It produces a deterministic, byte-exact payload from a receipt JSON file and
+uses OpenSSH signatures to sign and verify that payload.
 
-HALO-RECEIPTS is intentionally minimal. It does not attempt to:
-
-- Replace logging systems
-- Act as a database
-- Automatically infer meaning or intent
-- Provide real-time guarantees
-
-Its role is to create durable, inspectable attestations — nothing more.
----
-
-## Status
-
-🚧 **Very early / scaffold stage**
-
-- Repository initializedgit add README.md
-git commit -m "Define HALO-RECEIPTS purpose in README"
-git push
-
-
-
-# HALO-RECEIPTS
-
-HALO-RECEIPTS is a cryptographic receipt and verification system for proving
-that a specific byte-exact artifact existed at a specific time and was attested
-to by an authorized signer.
-
-It is designed for:
-- AI transcripts
-- Machine attestations
-- Governance-grade audit trails
-- Deterministic verification pipelines
-
-This repository is infrastructure, not a demo.
+If the bytes change, the signature breaks.
 
 ---
 
 ## Core Guarantees
 
-A valid HALO receipt guarantees:
-
-- The **exact byte content** of a subject artifact
-- A **cryptographic hash** over those bytes
-- A **deterministic, canonical payload**
-- A **verifiable SSH signature** by an authorized signer
-- **Schema-validated structure** prior to verification
-
-It explicitly does **not** guarantee:
-- Truth of the content
-- Intent of the signer
-- Identity beyond key ownership
-- Protection against a compromised private key
+- Deterministic payload derivation (byte-exact)
+- SSH-based signing and verification (OpenSSH `ssh-keygen -Y`)
+- JSON Schema validation of receipts
+- Human-readable audit artifacts
+- Scriptable, non-interactive verification with exit codes
 
 ---
 
-## Repository Structure
+## Status
 
+🚧 Early / scaffold stage
 
+- [x] Deterministic payload derivation
+- [x] SSH signature signing & verification
+- [x] JSON Schema validation
+- [ ] Multi-signer enrollment (future)
+- [ ] Machine identity distribution (future)
+
+---
+
+## Minimal end-to-end example
+
+HALO-RECEIPTS is intentionally small and deterministic. It performs:
+
+1. Derive a canonical, byte-exact payload from a receipt JSON
+2. Sign that payload with an SSH private key
+3. Verify that signature later against an allowed signers file
+
+### Prerequisites
+
+- OpenSSH ≥ 8.2 (for `ssh-keygen -Y`)
+- Python 3
+- `jsonschema` (for schema validation)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install jsonschema
