@@ -1,39 +1,256 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://halo-receipts/receipt.schema.json",
-  "title": "HALO Receipt (current signing model)",
+  "$id": "halo://receipts/schema/healthcare_ai_v1",
+  "title": "HALO Healthcare AI Decision Receipt v1",
   "type": "object",
-  "additionalProperties": true,
-  "required": ["content_hash", "subject"],
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt_id",
+    "created_at",
+    "event",
+    "actor",
+    "subject",
+    "artifacts"
+  ],
   "properties": {
-    "schema_version": { "type": ["string", "null"] },
-    "created_at": { "type": ["string", "null"], "format": "date-time" },
-    "content_hash": {
+    "schema": {
+      "type": "string",
+      "const": "healthcare_ai_v1"
+    },
+    "receipt_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9._:-]+$",
+      "description": "Unique receipt identifier (no PHI)."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Emitter timestamp. Not a trusted time proof without TSA anchoring."
+    },
+    "event": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["alg", "value"],
+      "required": ["type", "action", "risk_tier"],
       "properties": {
-        "alg": { "type": "string", "const": "sha256" },
-        "value": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        "type": {
+          "type": "string",
+          "const": "ai_decision",
+          "description": "Receipt category."
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9_]+$",
+          "examples": ["recommendation", "triage", "risk_score", "alert"]
+        },
+        "risk_tier": {
+          "type": "string",
+          "enum": ["low", "moderate", "high"],
+          "description": "Operational risk tier for routing/audit, not a clinical claim."
+        },
+        "workflow": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9._:-]+$",
+          "description": "Optional workflow identifier (unit process, pathway, etc.)."
+        },
+        "reason_codes": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[A-Z0-9_.-]+$"
+          },
+          "description": "Non-PII structured codes (internal enum), not narrative."
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signer_id", "service", "environment"],
+      "properties": {
+        "signer_id": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9._:-]+$",
+          "description": "Per-service signer identity, e.g. svc:rt-ai-recommender:prod"
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9._:-]+$"
+            },
+            "version": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^[a-zA-Z0-9._:-]+$"
+            },
+            "instance": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9._:-]+$",
+              "description": "Optional instance id / pod / hostname token (avoid raw hostnames if sensitive)."
+            }
+          }
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["dev", "staging", "prod"]
+        }
       }
     },
     "subject": {
       "type": "object",
-      "additionalProperties": true,
-      "required": ["byte_length"],
+      "additionalProperties": false,
+      "required": ["patient_ref", "encounter_ref"],
       "properties": {
-        "byte_length": { "type": "integer", "minimum": 0 },
-        "content_type": { "type": ["string", "null"] },
-        "type": { "type": ["string", "null"] }
+        "patient_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algo", "digest"],
+          "properties": {
+            "algo": { "type": "string", "enum": ["sha256"] },
+            "digest": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "sha256(patient_id || org_salt) — do not commit salt."
+            }
+          }
+        },
+        "encounter_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algo", "digest"],
+          "properties": {
+            "algo": { "type": "string", "enum": ["sha256"] },
+            "digest": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "sha256(encounter_id || org_salt) — do not commit salt."
+            }
+          }
+        },
+        "context_min": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "age_band": {
+              "type": "string",
+              "enum": ["0-17", "18-34", "35-49", "50-64", "65-74", "75-84", "85+"]
+            },
+            "sex": {
+              "type": "string",
+              "enum": ["female", "male", "intersex", "unknown", "unspecified"]
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^[a-zA-Z0-9 _.-]+$",
+              "description": "Care setting label like ICU/ED/RT (avoid bed/room numbers)."
+            }
+          }
+        }
       }
     },
-    "issuer": {
-      "type": ["object", "null"],
-      "additionalProperties": true,
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "output"],
       "properties": {
-        "name": { "type": ["string", "null"] },
-        "key_id": { "type": ["string", "null"] }
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algo", "digest"],
+          "properties": {
+            "algo": { "type": "string", "enum": ["sha256"] },
+            "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "uri": {
+              "type": "string",
+              "maxLength": 512,
+              "description": "Optional pointer (prefer internal opaque IDs; avoid PHI in paths)."
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algo", "digest"],
+          "properties": {
+            "algo": { "type": "string", "enum": ["sha256"] },
+            "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "uri": {
+              "type": "string",
+              "maxLength": 512
+            }
+          }
+        },
+        "transcript": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algo", "digest"],
+          "properties": {
+            "algo": { "type": "string", "enum": ["sha256"] },
+            "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "uri": { "type": "string", "maxLength": 512 }
+          },
+          "description": "Optional: hashed transcript/justification text stored elsewhere."
+        }
       }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "maxLength": 128 },
+        "version": { "type": "string", "maxLength": 64 },
+        "build": { "type": "string", "maxLength": 128 },
+        "vendor": { "type": "string", "maxLength": 128 },
+        "policy_hash": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algo", "digest"],
+          "properties": {
+            "algo": { "type": "string", "enum": ["sha256"] },
+            "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          },
+          "description": "Hash of governing policy/config used for the decision."
+        }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rfc3161": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tsa", "tsr_b64", "hashed_receipt_algo", "hashed_receipt_digest"],
+          "properties": {
+            "tsa": { "type": "string", "maxLength": 256 },
+            "tsr_b64": { "type": "string", "minLength": 1, "maxLength": 50000 },
+            "hashed_receipt_algo": { "type": "string", "enum": ["sha256"] },
+            "hashed_receipt_digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          },
+          "description": "Optional TSA response binding a hash of the canonical receipt payload."
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional extension area. If you include it in canonical payload, it is integrity-protected."
     }
   }
 }
