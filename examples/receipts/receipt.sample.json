@@ -18,7 +18,7 @@
   "subject": {
     "type": "conversation",
     "content_type": "text/plain",
-    "byte_length": 80
+    "byte_length":999999
   },
   "issuer": {
     "name": "HALO Receipts (sample)"
