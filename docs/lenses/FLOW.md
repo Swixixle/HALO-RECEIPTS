@@ -1,102 +1,162 @@
 # Flow Lens
 
-This lens describes how information, responsibility, and certainty move through HALO-RECEIPTS.
+This document describes the canonical flow of HALO-RECEIPTS from artifact creation to later verification.
 
-It is not about control.
-It is about containment.
-
----
-
-## Core Flow Principle
-
-HALO-RECEIPTS enforces a **one-way flow of certainty**:
-
-Human intent → bytes → canonicalization → signature → verification
-
-Once bytes are signed, meaning stops moving.
+This is not a workflow prescription.
+It is a factual description of what happens.
 
 ---
 
-## Separation of Concerns
+## High-Level Flow
 
-HALO-RECEIPTS intentionally separates:
+1. Bytes exist
+2. Bytes are normalized
+3. A deterministic payload is derived
+4. The payload is signed
+5. Signature and payload are stored
+6. Verification occurs later, elsewhere
 
-- **Creation** (what was produced)
-- **Assertion** (what someone claims about it)
-- **Evidence** (what can be proven later)
-
-Only the first is inside the system.
-The others are downstream consumers.
-
----
-
-## Where Meaning Stops
-
-HALO-RECEIPTS draws a hard line:
-
-> Meaning ends at the byte boundary.
-
-After canonicalization:
-- No interpretation is allowed
-- No normalization is permitted
-- No context is preserved
-- No intent is inferred
-
-The system becomes deaf by design.
+There are no callbacks, no upstream dependencies, and no required downstream consumers.
 
 ---
 
-## Temporal Flow
+## Step 1: Artifact Exists
 
-HALO-RECEIPTS is asymmetric in time.
-
-- Creation happens once
-- Verification can happen infinitely
-- Verification does not require the creator
-- Verification does not trust the verifier
-
-Past existence is checked from the future without negotiation.
-
----
-
-## Trust Direction
-
-Trust flows **outward**, never inward.
-
-- The verifier does not trust the issuer
-- The system does not trust the environment
-- The signature does not trust transport
-- The receipt does not trust interpretation
-
-Trust is replaced with mechanical proof.
-
----
-
-## Failure as Signal
-
-Breaks in flow are intentional signals, not errors to smooth over.
+An artifact is produced by some external process.
 
 Examples:
-- Byte mismatch → tampering or mis-derivation
-- Unknown signer → governance failure
-- Schema violation → invalid artifact
+- A JSON document
+- A policy file
+- A prompt or model configuration
+- A log snapshot
+- A report or decision memo
 
-There is no recovery path inside the system.
-Resolution happens outside it.
+HALO-RECEIPTS does not care **how** the artifact was produced.
 
 ---
 
-## Why This Matters
+## Step 2: Canonicalization
 
-Most systems fail by letting meaning flow backward.
+The artifact is transformed into a deterministic byte representation.
 
-HALO-RECEIPTS prevents:
-- Retroactive reinterpretation
-- Context laundering
-- Narrative drift
-- Authority substitution
+Properties:
+- Stable ordering
+- Explicit byte length
+- No hidden metadata
+- No environmental influence
 
-It freezes one fact:
-**these bytes existed and were signed**.
+If canonicalization changes, signatures break.
 
-Everything else is someone else’s problem.
+This is intentional.
+
+---
+
+## Step 3: Payload Construction
+
+A receipt payload is constructed containing:
+- Canonical bytes (or their hash)
+- Byte length
+- Minimal contextual metadata
+- Schema version
+
+The payload is the **only** thing that is signed.
+
+---
+
+## Step 4: Signing
+
+The payload is signed using an SSH-compatible signing key.
+
+Properties:
+- Offline-capable
+- Human-owned keys
+- No central signing authority
+- No key discovery
+
+The result is a detached signature file.
+
+---
+
+## Step 5: Storage
+
+The following files now exist:
+- Original artifact
+- Canonical payload
+- Signature file
+
+They may be stored:
+- Together
+- Separately
+- In different systems
+- By different parties
+
+HALO-RECEIPTS does not require co-location.
+
+---
+
+## Step 6: Verification (Later)
+
+At any later time, any party may verify:
+- The payload matches the artifact
+- The signature matches the payload
+- The signer key is acceptable
+
+Verification requires:
+- The artifact (or its canonical form)
+- The payload
+- The signature
+- An allowed signers list
+
+Nothing else.
+
+---
+
+## Failure Propagation
+
+Any mutation causes failure:
+- Artifact changed → payload mismatch
+- Payload changed → signature invalid
+- Signature missing → verification fails
+- Signer unknown → verification fails
+
+There is no partial success.
+
+---
+
+## Temporal Decoupling
+
+Signing and verification are intentionally decoupled.
+
+Properties:
+- Different machines
+- Different organizations
+- Different moments in time
+- Different threat models
+
+This is not a weakness.
+It is the core design.
+
+---
+
+## What the Flow Does Not Include
+
+Explicitly excluded:
+- Identity resolution
+- Intent inference
+- Authorization decisions
+- Trust scoring
+- Real-time enforcement
+
+Those occur **outside** the flow, if at all.
+
+---
+
+## Summary
+
+HALO-RECEIPTS flow is linear, minimal, and hostile to ambiguity.
+
+Nothing is implied.
+Nothing is inferred.
+Nothing is repaired.
+
+Only bytes, signatures, and time remain.
