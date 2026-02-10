@@ -1,15 +1,46 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "halo://receipts/schema/halo_envelope_v1",
-  "title": "HALO Envelope Receipt v1 (Manifest)",
+  "title": "HALO Envelope v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["ces_version", "event_hash", "signer_id", "timestamp_utc", "signature"],
+  "required": [
+    "schema",
+    "ces_version",
+    "namespace",
+    "event_hash_alg",
+    "event_hash",
+    "signer_id",
+    "timestamp_utc",
+    "signature"
+  ],
   "properties": {
+    "schema": { "type": "string", "const": "halo_envelope_v1" },
     "ces_version": { "type": "string", "const": "1.0" },
+    "namespace": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-zA-Z0-9._:-]+$",
+      "description": "OpenSSH signature namespace; must match on verify."
+    },
+    "event_hash_alg": { "type": "string", "const": "sha256" },
     "event_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "signer_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9._:-]+$" },
-    "timestamp_utc": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$" },
-    "signature": { "type": "string", "minLength": 32, "maxLength": 20000 }
+    "signer_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9._:-]+$"
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 20000,
+      "description": "OpenSSH signature block text."
+    }
   }
 }
