@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "halo://receipts/schema/halo_envelope_v1",
+  "title": "HALO Envelope Receipt v1 (Manifest)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ces_version", "event_hash", "signer_id", "timestamp_utc", "signature"],
+  "properties": {
+    "ces_version": { "type": "string", "const": "1.0" },
+    "event_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "signer_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9._:-]+$" },
+    "timestamp_utc": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$" },
+    "signature": { "type": "string", "minLength": 32, "maxLength": 20000 }
+  }
+}
