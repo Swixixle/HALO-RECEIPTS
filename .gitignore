@@ -50,3 +50,6 @@ keys/halo_ed25519.pub
 
 # local build/test artifacts
 out/
+
+# generated envelope outputs (local)
+*.halo.json
