@@ -1,51 +1,39 @@
 # HALO-RECEIPTS
 
-HALO-RECEIPTS is a minimal cryptographic receipt system.
+HALO-RECEIPTS is a cryptographic audit infrastructure for producing verifiable, tamper-evident proof artifacts.
 
-It produces a deterministic, byte-exact payload from a receipt JSON file and
-uses OpenSSH signatures to sign and verify that payload.
+**Scope:** notarization + verification.  
+**Non-scope:** data management, meaning/intent interpretation, scoring, AI judgments.
 
-If the bytes change, the signature breaks.
+## Lexicon (Core Objects)
 
----
+- **Event**: the raw domain JSON (e.g., a healthcare AI decision record).
+- **Canonical payload**: the deterministic UTF-8 bytes derived from the Event that are hashed.
+- **Envelope**: the cryptographic wrapper (`.halo.json`) containing hash + signature + metadata.
+- **Receipt**: the conceptual unit formed by **Event + Envelope**.
 
-## Core Guarantees
+## Schemas & Examples
 
-- Deterministic payload derivation (byte-exact)
-- SSH-based signing and verification (OpenSSH `ssh-keygen -Y`)
-- JSON Schema validation of receipts
-- Human-readable audit artifacts
-- Scriptable, non-interactive verification with exit codes
+Event schema:
+- `receipts/schema/receipt.schema.json`
 
----
+Envelope schema:
+- `receipts/schema/halo_envelope_v1.schema.json`
 
-## Status
+Example Event:
+- `examples/receipts/healthcare_ai_v1.sample.json`
 
-🚧 Early / scaffold stage
+Example Envelope (generated, usually ignored by git):
+- `examples/receipts/healthcare_ai_v1.sample.json.halo.json`
 
-- [x] Deterministic payload derivation
-- [x] SSH signature signing & verification
-- [x] JSON Schema validation
-- [ ] Multi-signer enrollment (future)
-- [ ] Machine identity distribution (future)
+## Quickstart (Generate → Verify → Tamper)
 
----
-
-## Minimal end-to-end example
-
-HALO-RECEIPTS is intentionally small and deterministic. It performs:
-
-1. Derive a canonical, byte-exact payload from a receipt JSON
-2. Sign that payload with an SSH private key
-3. Verify that signature later against an allowed signers file
-
-### Prerequisites
-
-- OpenSSH ≥ 8.2 (for `ssh-keygen -Y`)
-- Python 3
-- `jsonschema` (for schema validation)
+### Setup
+Requires:
+- Node.js
+- Python + `jsonschema`
+- OpenSSH (`ssh-keygen -Y sign/verify`)
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
-pip install jsonschema
+.venv/bin/python -m pip install -U pip jsonschema

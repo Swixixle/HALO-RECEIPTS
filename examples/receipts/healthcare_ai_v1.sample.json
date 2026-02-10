@@ -1,0 +1,64 @@
+{
+  "schema": "healthcare_ai_v1",
+  "receipt_id": "rx:ai:2026-02-09T03:31:00Z:0001",
+  "created_at": "2026-02-09T03:31:00Z",
+  "event": {
+    "type": "ai_decision",
+    "action": "recommendation",
+    "risk_tier": "moderate",
+    "workflow": "rt_pathway_v2",
+    "reason_codes": ["MODEL_USED", "POLICY_HASHED", "PSEUDONYMIZED_SUBJECT"]
+  },
+  "actor": {
+    "signer_id": "svc:rt-ai-recommender:prod",
+    "service": {
+      "name": "rt-ai-recommender",
+      "version": "0.1.0",
+      "instance": "pod-17"
+    },
+    "environment": "prod"
+  },
+  "subject": {
+    "patient_ref": {
+      "algo": "sha256",
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "encounter_ref": {
+      "algo": "sha256",
+      "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "context_min": {
+      "age_band": "50-64",
+      "sex": "male",
+      "unit": "ICU"
+    }
+  },
+  "artifacts": {
+    "input": {
+      "algo": "sha256",
+      "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "uri": "ehr://bundle/opaque-input-id"
+    },
+    "output": {
+      "algo": "sha256",
+      "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "uri": "ehr://note/opaque-output-id"
+    },
+    "transcript": {
+      "algo": "sha256",
+      "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "uri": "store://audit/transcript/opaque"
+    }
+  },
+  "model": {
+    "name": "rt-recommender",
+    "version": "2026.02",
+    "build": "git:f00dbabe",
+    "vendor": "internal",
+    "policy_hash": {
+      "algo": "sha256",
+      "digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  }
+}
+

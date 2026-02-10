@@ -250,7 +250,7 @@
     "extensions": {
       "type": "object",
       "additionalProperties": true,
-      "description": "Optional metadata. NOTE: fields in extensions are stripped before hashing and are NOT integrity-protected."
+      "description": "Optional extension area. If you include it in canonical payload, it is integrity-protected."
     }
   }
 }

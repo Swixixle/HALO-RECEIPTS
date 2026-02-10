@@ -1,49 +1,21 @@
-# Runtime output (generated) — ignore only at repo root
 
-# OS / editor noise
 .DS_Store
-*.swp
-*.swo
-# Generated signing artifacts
+.venv/
+*.halo.json
 *.payload
 *.payload.sig
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Signing keys (DO NOT COMMIT PRIVATE KEYS)
-keys/halo_ed25519
-keys/halo_ed25519.pub
-
-# Signing keys (DO NOT COMMIT PRIVATE KEYS)
-keys/halo_ed25519
-keys/halo_ed25519.pub
-
-# Generated signature artifacts (optional: keep if you want examples committed)
-# If you want to commit sample payload+sig, comment these out.
+*.swo
+*.swp
 # *.payload
 # *.payload.sig
-.venv/
+# generated envelope outputs (local)
+# Generated signature artifacts (optional: keep if you want examples committed)
+# Generated signing artifacts
+# If you want to commit sample payload+sig, comment these out.
+# local build/test artifacts
+# OS / editor noise
+# Runtime output (generated) — ignore only at repo root
+# Signing keys (DO NOT COMMIT PRIVATE KEYS)
+keys/halo_ed25519
+keys/halo_ed25519.pub
+out/
