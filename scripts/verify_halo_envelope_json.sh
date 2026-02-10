@@ -81,10 +81,11 @@ def has(pat: str) -> bool:
     return re.search(pat, out, re.I) is not None
 
 # Schema
-if has(r"INVALID EVENT \(schema\)|SCHEMA(S)? (FAILED|FAIL)|❌"):
-    # try to be precise: only flip schema FAIL if schema error is mentioned
-    if has(r"INVALID EVENT \(schema\)|schema"):
-        schema = "FAIL"
+
+# Only mark schema FAIL on explicit schema failure indicators.
+# Do NOT treat generic "❌" or the mere word "schema" as a schema failure.
+if has(r"INVALID EVENT \(schema\)|SCHEMA(S)? (FAILED|FAIL)"):
+    schema = "FAIL"
 
 # Canonical hash / event hash
 if has(r"EVENT HASH MISMATCH|CANON(ICAL)?( HASH)? (MISMATCH|FAIL)"):
