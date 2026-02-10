@@ -60,7 +60,23 @@ expected_hash = None
 actual_hash = None
 schema_errors = None
 signer_identity = None
+
+# signer identity: best-effort parse from verifier output
+m = re.search(r"signer\s*[:=]\s*(.+)", out, re.I | re.M)
+if m:
+    signer_identity = m.group(1).strip()
+else:
+    m = re.search(r"key\s*id\s*[:=]\s*(.+)", out, re.I | re.M)
+    if m:
+        signer_identity = m.group(1).strip()
 allowed_signers_version = None
+
+# allowed signers version: sha256 of allowlist file bytes
+try:
+    ab = open("","rb").read()
+    allowed_signers_version = hashlib.sha256(ab).hexdigest()
+except Exception:
+    pass
 
 # failure reason: first ❌ line if present
 m = re.search(r"^❌.*$", out, re.M)
@@ -80,7 +96,7 @@ if schema == "FAIL":
 
 result = {
   "status": status,
-  "timestamp": datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat(),
+  "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
   "receipt_id": receipt_id,
   "checks": {
     "schema": schema,
