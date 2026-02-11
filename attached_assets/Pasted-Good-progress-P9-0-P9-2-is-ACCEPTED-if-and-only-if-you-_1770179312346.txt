@@ -1,0 +1,122 @@
+Good progress. **P9-0 → P9-2 is ACCEPTED** *if* (and only if) you enforce the forbidden-words scanner rules exactly as below. Right now you’re at the common failure point: “we loosened the scanner to get green.” That cannot happen.
+
+So: proceed, but lock the scanner properly, then move to P9-3.
+
+---
+
+# A. REQUIRED: Fix the forbidden-words scanner correctly (no weakening)
+
+### The scanner must:
+
+1. **Scan only UI copy that can be rendered to users**, not code structure.
+2. **Allow the Capability Matrix forbidden list** to contain forbidden terms **only** inside a specific allowlisted block.
+3. **Never allow those terms anywhere else** (including other UI labels, tooltips, error messages).
+
+### Implement EXACTLY this approach (no alternatives)
+
+## 1) Mark allowlisted copy blocks explicitly
+
+Wrap the forbidden-capabilities list in a dedicated component or a tagged constant:
+
+* Component name: `ForbiddenCapabilitiesList`
+* File path must include: `ui/halo/` (or similar fixed folder)
+
+or
+
+* Exported constant name: `FORBIDDEN_CAPABILITIES_COPY_ALLOWLIST`
+
+## 2) Scanner rules (strict)
+
+* Scanner should parse `.tsx/.ts` and extract string literals.
+* It should **exclude**:
+
+  * HTML attributes (`className`, `data-*`, `aria-*`, `id`, etc.)
+  * internal identifiers (component names, variable names)
+* It should **NOT** exclude:
+
+  * visible text nodes
+  * tooltip strings
+  * button labels
+  * headings
+  * error messages
+
+## 3) Allowed forbidden-words scope (single exception)
+
+Only allow the forbidden words list *when and only when*:
+
+* file path matches: `src/ui/halo/**`
+* AND the string is within the allowlisted constant/component above
+
+Everything else is a hard fail.
+
+### Acceptance check
+
+Add two unit tests for the scanner:
+
+* **Test A:** “accurate” appears in any random UI string → scanner FAILS
+* **Test B:** “truth scoring” appears inside `ForbiddenCapabilitiesList` allowlist → scanner PASSES
+
+If you don’t add these tests, you haven’t locked the guardrail.
+
+---
+
+# B. P9-0 → P9-2 acceptance checklist (must be true)
+
+Confirm these are implemented exactly:
+
+### P9-1 Nav
+
+* Exactly 5 nav items in this order:
+
+  1. Verify
+  2. Receipts
+  3. Receipt Viewer
+  4. Sensors
+  5. Governance
+* No hidden routes exposed in UI nav
+
+### P9-2 Halo Header
+
+Halo blocks in exact order:
+
+1. System Mode Pill (kill switch) + verbatim microcopy
+2. Verification Result Pill + verbatim subtitle
+3. Capability mini-summary (implemented + forbidden) + “View full capability matrix”
+4. Transcript Mode Pill + verbatim tooltip
+5. Evidence Integrity Pointer + last line hash + copy button
+
+Kill switch behavior:
+
+* Engaged hides Sensors + Interpretations tabs on receipt pages (or disables them if not built yet)
+
+No persistence:
+
+* No localStorage/sessionStorage usage
+* No analytics
+* No transcript caching
+
+If all are true (and the scanner is locked as above), you’re good.
+
+---
+
+# C. Next step: Proceed to P9-3 (Verify Screen)
+
+You should continue now with **P9-3**. Do not jump to sensors or governance.
+
+**P9-3 goal:** deterministic Verify screen with strict error rendering.
+
+### Non-negotiables for P9-3
+
+* 3 cards in order: Hash → Signature → Chain
+* Exact error strings for 413 / 429 / 401/403
+* “Public verify only” toggle routes to public endpoint
+* Halo visible on results page
+
+---
+
+## Direct order
+
+1. Implement the scanner lock + the two scanner tests (A/B)
+2. Then proceed immediately to P9-3
+
+Once you report “scanner tests added + P9-3 implemented,” I’ll accept and tell you the next screen.

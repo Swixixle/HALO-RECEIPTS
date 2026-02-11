@@ -1,0 +1,87 @@
+✅ P3 ACCEPTED. This closes the public endpoint leak risk and locks the contract into an unambiguous, testable shape.
+
+You delivered exactly the two missing acceptance requirements:
+	1.	Public endpoint evidence for all three transcript modes (full/redacted/hidden) with raw response shapes.
+	2.	Contract fix to transcript: { mode, included, message_count, content? } that prevents accidental leakage.
+
+Hidden mode guarantees are stated correctly and—crucially—your hidden response shows no content and only metadata.
+
+⸻
+
+One note (keep it, don’t overthink)
+
+You added a query parameter to test modes in dev. That’s fine only if it is:
+	•	behind NODE_ENV !== "production" guard and
+	•	ideally also behind a local-only or secret token check
+
+Directive: add an explicit safeguard:
+	•	If NODE_ENV === "production", ignore ?mode= overrides.
+
+This is a P3.5 micro-hardening, not a blocker.
+
+⸻
+
+Where we are now (milestones)
+	•	P0: deterministic forensics + UI separation ✅
+	•	P1: canonicalization summary + structural anomalies + export + transcript policy ✅
+	•	P2: signature + chain correctness (receipt hash anchored) ✅
+	•	P3: key governance + rotation + public endpoint discipline + c14n lock ✅
+
+You have a real verifier now.
+
+⸻
+
+P4 Authorization (next stage)
+
+✅ Authorized to proceed to P4: Public-grade operational hardening.
+
+This is the stage where products usually die—because they don’t handle abuse, load, or trust boundaries. We keep it narrow.
+
+P4 Scope (choose 2 of 4 max)
+
+Pick two to implement next. (Don’t boil the ocean.)
+
+Option 1 — Rate limiting + abuse controls (recommended)
+	•	Per-IP rate limiting for public endpoint
+	•	Burst + sustained limits
+	•	Return 429 with retry-after
+	•	Basic request size caps (protect from giant JSON)
+
+Option 2 — Auth boundary for private endpoints
+	•	Public verify stays public
+	•	Everything else (upload, receipt list, export with transcript) requires auth
+	•	Minimal API key header is enough for now
+
+Option 3 — Transparency log / verification receipts
+	•	When verifier returns verify-result, it also produces an attestation record:
+	•	attestation_hash
+	•	timestamp
+	•	engine id
+	•	Useful for proving the verifier didn’t change its mind later
+
+Option 4 — Issuer discovery & trust UI
+	•	Endpoint listing issuers + key status (active/revoked/expired)
+	•	UI that explains why something is untrusted
+	•	Helps public users interpret results safely
+
+⸻
+
+My recommendation for P4
+
+Do Option 1 + Option 2.
+
+Why:
+	•	You’re shipping “for the public.” Abuse and scraping come immediately.
+	•	A clean boundary between “public verify” and “private ops” prevents accidental leaks.
+
+⸻
+
+Copy/paste directive to the Replit agent (P4 kickoff)
+
+Use this verbatim (recommended path):
+
+Proceed with P4, implementing ONLY: (1) rate limiting and request size caps on public verify endpoint, returning 429 on limit; (2) authentication boundary so that non-public endpoints require an API key header (PUBLIC verify remains public). Add tests for rate limiting, oversized payload rejection, and auth-required enforcement. Do not add LLMs or schema v1.1.
+
+⸻
+
+If you confirm “P4 = Option 1 + 2”, I’ll define exact limit values (safe defaults) and the acceptance evidence packet.

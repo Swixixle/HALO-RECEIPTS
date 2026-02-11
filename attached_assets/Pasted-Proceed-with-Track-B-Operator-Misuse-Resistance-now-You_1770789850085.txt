@@ -1,0 +1,177 @@
+Proceed with **Track B (Operator Misuse Resistance)** now. You don’t need backend changes, and it’s the highest leverage hardening pass: it reduces operator error, makes evidence retrieval faster, and keeps your “fail-secure” posture intact.
+
+Below is an **implementation spec + copy/paste instructions** you can hand directly to the Replit Agent. It’s scoped, deterministic, and test-driven.
+
+---
+
+## Track B Scope (P9-6 optional later)
+
+You will implement four operator-hardening upgrades:
+
+1. **Copy Receipt ID** shortcuts (table + detail)
+2. **Proof Pack button** on detail page
+3. **Risk Summary strip** on detail page (PII/RISK/ANOM + counts)
+4. **Export guardrails** remain confirm-and-allow for kill switch/PII (per your policy), but tighten wording and operator friction
+
+### Non-goals
+
+* No backend changes
+* No new navigation items
+* No schema changes
+
+---
+
+## Replit Agent Instructions — Track B (NO DEVIATIONS)
+
+### Task 1 — Copy Receipt ID (table + detail)
+
+**Goal:** every receipt ID is copyable with one click, with a deterministic toast.
+
+#### Receipts table (`/receipts`)
+
+* Add a copy icon/button next to the displayed `receipt.id`
+* Clicking it copies the exact `receipt.id` string to clipboard
+* Show toast: `"Copied receipt ID"` (exact string), success variant
+
+#### Receipt detail (`/receipts/:receiptId`)
+
+* Add the same copy icon/button in the header area next to the ID
+* Same toast string
+
+**Implementation requirements**
+
+* Use `navigator.clipboard.writeText(receipt.id)`
+* If clipboard fails, show toast: `"Copy failed"` (exact string)
+
+**Tests**
+
+* Add a test that clicks the copy button and asserts toast text appears.
+* Don’t mock clipboard globally in a brittle way; provide a minimal clipboard stub in the test setup.
+
+---
+
+### Task 2 — Proof Pack button on detail page
+
+**Goal:** operator can open public proof pack from detail immediately.
+
+On `/receipts/:receiptId`, add a button:
+
+* Label: **“Open Proof Pack”**
+* Action: open `/api/public/receipts/${receipt.id}/proof` in a new tab (`target="_blank" rel="noreferrer"`)
+
+**Rules**
+
+* This is always available regardless of auth state (it’s public), but the detail page is still private; only show it once the receipt is loaded.
+* Do not attach `x-api-key` or do any authenticated fetch for this.
+
+**Tests**
+
+* Assert the anchor/button has the correct href.
+* If you render it as a `<Button asChild><a/></Button>`, test the link target.
+
+---
+
+### Task 3 — Risk Summary strip on detail page
+
+**Goal:** operator sees risk posture before reading anything.
+
+Add a compact strip near the top of detail page:
+
+* Title: **“Risk Summary”**
+* Chips:
+
+  * **PII** (with total count)
+  * **RISK** (count of risk markers)
+  * **ANOM** (count of anomalies)
+* If no forensics data: show `—` (em dash) in place of chips.
+
+**Counts logic (same as table)**
+
+* PII count = sum of any available numeric keys under `pii_heuristics` (e.g., email/phone/ssn). If keys unknown, count any numeric > 0.
+* RISK count = `risk_markers.length` (or 0)
+* ANOM count = `anomalies.length` (or 0)
+
+**Rules**
+
+* Must not re-parse JSON repeatedly. Use the existing memoized/cached forensics parse helper.
+* Risk Summary must render safely even if `forensicsJson` is missing or malformed.
+
+**Tests**
+
+* For a receipt with forensics: chips show correct labels and counts
+* For missing forensics: displays `—`
+
+---
+
+### Task 4 — Export guardrail wording + friction (confirm-and-allow stays)
+
+**Goal:** export remains allowed under kill switch (policy), but operator must explicitly acknowledge risk.
+
+If export is triggered and either condition is true:
+
+* PII present **OR**
+* kill switch engaged
+
+Then show a confirmation dialog.
+
+**Dialog copy (exact strings)**
+
+* Title: `"Confirm Export"`
+* Body (include both warnings when applicable):
+
+  * If PII: `"This receipt contains detected PII. Exporting may increase exposure risk."`
+  * If kill switch: `"Kill switch is engaged. Interpretation is blocked, but forensic export is permitted for evidence preservation."`
+* Buttons:
+
+  * Cancel: `"Cancel"`
+  * Confirm: `"Export anyway"`
+
+**Rules**
+
+* Export should not proceed unless confirm clicked.
+* If neither PII nor kill switch: export proceeds immediately (no dialog).
+
+**Tests**
+
+* Update the existing export test:
+
+  * When PII present → click export → confirm dialog appears → click “Export anyway” → endpoint called
+  * When no PII and no kill switch → export calls endpoint without dialog
+
+---
+
+## Acceptance Criteria
+
+Track B is done when:
+
+* Copy ID works in table + detail with toast
+* Proof pack button works on detail
+* Risk Summary strip renders correctly for forensics + missing forensics
+* Export confirm dialog appears only for PII/kill switch, with exact copy above
+* All tests pass + E2E still passes
+
+---
+
+## Minimal test plan additions
+
+Add at most **6** new tests to avoid bloat:
+
+1. Detail: Risk Summary renders counts
+2. Detail: Missing forensics renders `—`
+3. Detail: Copy ID shows “Copied receipt ID”
+4. Detail: Proof pack link has correct href
+5. Export: PII triggers confirm dialog and requires confirm
+6. Export: safe receipt exports without confirm
+
+---
+
+## Architect note on your kill-switch policy
+
+Your policy choice is coherent: **kill switch blocks interpretation, not evidence preservation.** The UI copy above makes that explicit and prevents reviewers from assuming you’re allowing “interpretation through the side door.”
+
+---
+
+If you want, I can also give you a **single-file patch plan** (exact insertion points) once you paste your current:
+
+* `ReceiptDetail` page component, and
+* the export handler / actions menu component used by the receipts table.

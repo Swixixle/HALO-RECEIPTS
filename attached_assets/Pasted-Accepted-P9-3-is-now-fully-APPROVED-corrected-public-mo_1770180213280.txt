@@ -1,0 +1,166 @@
+Accepted. **P9-3 is now fully APPROVED (corrected public mode).**
+You fixed the category error, aligned with the P6.7 proof pack endpoint, and added the exact tests we needed.
+
+Proceed to **P9-4 — Receipts List**. Below are direct orders—no interpretation.
+
+---
+
+# P9-4 — RECEIPTS LIST (DIRECT ORDERS)
+
+## 0) Scope and Constraints (ABSOLUTE)
+
+* You are implementing **only** the Receipts List screen and its row actions.
+* **No transcript preview**. Not in rows, not in tooltips, not in modals, not in hidden DOM.
+* **No new endpoints**. Use existing server endpoints only.
+* **No forbidden words** outside the Halo allowlist scope.
+* Halo header must be present wherever the user can view receipt state (list page included if it displays verification states).
+
+---
+
+## 1) Route + Nav
+
+* Route: `/receipts`
+* Nav item label: `Receipts` (already exists; do not rename)
+
+---
+
+## 2) Data Fetching
+
+### 2.1 Use existing list source
+
+* If an endpoint exists for listing receipts, use it.
+* If none exists, do **NOT** invent one. Instead:
+
+  * Load from whatever existing data source you already have in UI (mock, seeded, or a dev-only adapter),
+  * and file a separate ticket “Backend: receipts list endpoint required” (do not implement backend here).
+
+### 2.2 Response mapping must include these fields per row:
+
+* `receipt_id` (or synthetic ID)
+* `verification_result` (VERIFIED / PARTIALLY_VERIFIED / UNVERIFIED)
+* `signature_status`
+* `chain_status`
+* `forensics_flag_count` (aggregate number, and optional breakdown like `pii:2 entropy:1` if available)
+* `kill_switch_state` (boolean)
+* `created_timestamp` (ISO-8601)
+
+If the backend doesn’t provide some of these:
+
+* render `—` (em dash)
+* do not infer
+* do not compute client-side unless the raw fields exist (e.g., if you have the exact flag list, counting is allowed)
+
+---
+
+## 3) Table UI (EXACT columns, EXACT order)
+
+Create a table with these columns in this order:
+
+1. **Receipt ID**
+2. **Result**
+3. **Signature status**
+4. **Chain status**
+5. **Forensics flags**
+6. **Kill switch**
+7. **Created**
+
+### Column rules
+
+* “Result” must display ONLY the 3 allowed values.
+* Forensics flags column:
+
+  * If you have only a count, show `PII:0 Entropy:0 Risk:0` only if you have those categories.
+  * Otherwise show `Flags: <count>` or `—` if unknown.
+* Kill switch column:
+
+  * icon only (locked/unlocked)
+  * tooltip text allowed: `Kill switch engaged` / `Kill switch off` only
+
+---
+
+## 4) Row expansion (NO transcript leak)
+
+Each row must have an expand control (chevron or “…” menu) that reveals exactly **three actions**:
+
+1. **Show verification report**
+2. **Open receipt viewer**
+3. **Export forensic JSON**
+
+No other actions. No edit/delete. No transcript preview.
+
+### Action behavior
+
+#### 4.1 Show verification report
+
+* Opens a read-only modal or drawer that displays ONLY:
+
+  * Hash card (match/mismatch + algo + canonicalization)
+  * Signature card (status + key id + issuer)
+  * Chain card (status + previous link)
+* This report must be sourced from:
+
+  * existing verify report endpoint, OR
+  * proof pack endpoint `GET /api/public/receipts/:id/proof` (preferred for read-only)
+
+#### 4.2 Open receipt viewer
+
+* Navigates to Receipt Viewer route for that receipt (whatever your existing route is)
+* Pass receipt_id only; do not pass transcript content in state
+
+#### 4.3 Export forensic JSON
+
+* Triggers download using the existing forensic export endpoint.
+* If endpoint is private, require x-api-key proxy pattern; do not call it directly from browser if that violates your CLIENT_INTEGRATION.md rules.
+* If you can’t call it safely from browser, render the action disabled with tooltip:
+
+  * `Requires server proxy (x-api-key)`
+    (this text is allowed)
+
+---
+
+## 5) Search + filtering (minimal, allowed)
+
+You may implement:
+
+* Search input filtering by receipt_id (client-side OK)
+* Filter dropdown by Result (VERIFIED/PARTIALLY/UNVERIFIED)
+
+Do not implement advanced filters.
+
+---
+
+## 6) Tests (MANDATORY)
+
+Add tests for:
+
+1. Table renders with **exact column headers** in exact order
+2. Row expansion reveals **exactly three actions**
+3. “Show verification report” renders **only** Hash/Signature/Chain cards (no transcript)
+4. “Open receipt viewer” navigates with receipt_id only
+5. “Export forensic JSON” does not leak transcript and uses correct endpoint or is disabled with correct tooltip
+6. Snapshot test with:
+
+   * VERIFIED row
+   * PARTIALLY_VERIFIED row
+   * UNVERIFIED row
+
+---
+
+## 7) Stop Condition
+
+When P9-4 is complete:
+
+* run full test suite
+* report:
+
+  * files changed
+  * new tests added
+  * any blocked backend dependency (if receipts list endpoint missing)
+
+Then stop and wait for P9-5 orders.
+
+---
+
+## Proceed now
+
+Implement P9-4 exactly as above.

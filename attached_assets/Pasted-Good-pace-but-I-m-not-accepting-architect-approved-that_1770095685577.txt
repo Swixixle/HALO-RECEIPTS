@@ -1,0 +1,113 @@
+Good pace, but I’m not accepting “architect approved” (that was you). I’m the gate. Same rule as P0: no claims without artifacts.
+
+P1 Review Status
+
+✅ Provisionally APPROVE P1.1 / P1.3 / P1.4
+⛔ P1.2 Structural anomalies detector is NOT accepted yet (not because it’s wrong — because you didn’t show evidence outputs and thresholds).
+
+You’re close. I just need the P1 Evidence Packet.
+
+⸻
+
+P1 Evidence Packet (required)
+
+1) Verify-result shows c14n_summary (P1.1)
+
+Paste ONE raw /api/verify response JSON (VERIFIED or PARTIALLY_VERIFIED) that includes:
+	•	c14n_summary.c14n_version
+	•	fields_hashed
+	•	message_count_hashed
+	•	hash_input_bytes
+
+2) Structural anomalies detector proof (P1.2) — REQUIRED
+
+You must provide three test inputs and their detector outputs:
+
+Case A — Missing role
+
+Transcript contains a message with missing/empty role.
+Expect: anomaly MISSING_ROLE (severity must be defined).
+
+Case B — Unexpected role
+
+Transcript contains role admin or moderator.
+Expect: anomaly UNEXPECTED_ROLE and include what was observed (role string), but do not leak full message content.
+
+Case C — Oversize message threshold
+
+Transcript contains a single message with length THRESHOLD + 1 characters.
+Expect: anomaly OVERSIZE_MESSAGE and output includes:
+	•	threshold value
+	•	observed length
+
+Also required: show the threshold definition (constant) and where it lives.
+
+3) Export endpoint artifact (P1.3)
+
+Paste one raw response from:
+
+GET /api/receipts/:receiptId/export
+
+Must include:
+	•	schema: "ai-receipt/export/1.0"
+	•	verify_result
+	•	forensics
+	•	interpretations array (even if empty)
+
+And show that it respects transcript mode:
+	•	either capsule_raw_json omitted, or transcript stripped, depending on your design.
+
+4) Transcript mode evidence (P1.4)
+
+Provide outputs for:
+
+A) GET /api/config/transcript-mode
+
+Response JSON showing current mode + description.
+
+B) UI evidence for each mode (3 screenshots OR HTML excerpt)
+	•	full: transcript visible
+	•	redacted: transcript visible but redacted patterns shown (e.g., [REDACTED_EMAIL])
+	•	hidden: transcript tab absent OR transcript block replaced with “hidden by policy”
+
+If you can’t screenshot, paste rendered HTML or a DOM text dump.
+
+⸻
+
+Critical enforcement checks (must be true)
+
+Enforcement 1: Redaction must be display-only
+
+Confirm (in writing, with code pointer):
+	•	you do not mutate stored raw_json on redaction
+	•	redaction happens only in response rendering when mode=redacted
+
+Enforcement 2: Export obeys transcript mode
+	•	hidden: export must not include transcript content (raw capsule or transcript)
+	•	redacted: export should include either redacted transcript or no transcript; pick one, but be consistent and document
+
+⸻
+
+One scope correction
+
+You mentioned GET /api/config/transcript-mode. Good, but ensure:
+	•	It is read-only
+	•	Changing modes should be env-based or admin-only; do not add a public unauthenticated setter in P1.
+
+If you already added a setter, remove or lock it.
+
+⸻
+
+Decision rule
+
+Once you paste the P1 Evidence Packet items above:
+	•	✅ I will accept P1 fully and authorize P2 work.
+	•	If any artifact shows policy drift (e.g., stored raw_json mutated), we rollback that piece.
+
+⸻
+
+Copy/paste directive to your Replit agent
+
+Produce P1 evidence artifacts: (1) sample /api/verify response showing c14n_summary, (2) three structural anomaly test cases with outputs + threshold constant location, (3) sample /api/receipts/:id/export response JSON demonstrating transcript mode compliance, (4) /api/config/transcript-mode response, plus UI screenshots or HTML excerpts for full/redacted/hidden. Confirm redaction is display-only and raw_json is never mutated.
+
+Send me those outputs. Then we move.

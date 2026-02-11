@@ -1,0 +1,78 @@
+Good. Next phase should be **operator hardening + scale readiness**. You’ve proven correctness; now you make it resilient under load, harder to misuse, and easier to audit.
+
+## Next Phase: P9-5 — Receipts Ops Hardening
+
+### 1) Performance & scale (no backend required)
+
+**Goal:** keep `/receipts` snappy at 1k–50k receipts.
+
+* Add **row virtualization** (TanStack Virtual or equivalent) so rendering cost is O(viewport), not O(n).
+* Memoize derived fields (forensics flags, chips) to avoid recompute per render.
+* Defer heavy UI (tooltips/menus) until interaction.
+* Add a “**Last updated**” timestamp + manual refresh button.
+
+**Done when**
+
+* Scrolling stays smooth with a synthetic 10,000-row dataset.
+* No React “long task” spikes when toggling filters/search.
+
+### 2) Deterministic “missing auth” UX (already mostly there)
+
+**Goal:** eliminate ambiguous failure states.
+
+* Standardize a single “Auth required” banner component used across all private pages.
+* Ensure **401/403** render the same deterministic UI state everywhere (Receipts, Export, etc.).
+
+**Done when**
+
+* You can remove the key and see a consistent failure state across all private screens.
+
+### 3) Stronger export action safety
+
+**Goal:** prevent accidental leakage / “oops exports.”
+
+* Add a confirm modal for export when forensics flags contain PII (PII chip present).
+* Disable export if kill switch is engaged (or require an explicit override confirmation, depending on your policy).
+
+**Done when**
+
+* Export flow has an explicit “you are about to export” decision point under risk conditions.
+
+### 4) Test hardening (high-value, low-brittle)
+
+Add only what prevents regressions without creating a maintenance tax:
+
+* **Visual regression**: 1 golden screenshot of `/receipts` (table header + first ~10 rows) to catch layout drift.
+* **Contract test** for `apiFetch`:
+
+  * doesn’t inject in prod
+  * doesn’t inject on `/api/public/**`
+  * throws in `MODE=e2e` when missing key (exact string)
+* **Perf smoke**: a test harness that renders 5k+ synthetic rows and asserts no crash + basic interactions work.
+
+**Done when**
+
+* CI fails on UI layout drift, auth injection regressions, or export safety regressions.
+
+---
+
+## Optional: P9-6 — Backend pagination (only if you expect growth soon)
+
+If you anticipate receipts > 5k in real usage, it’s worth doing:
+
+* `GET /api/receipts?status=&q=&hasForensics=&killSwitch=&sort=&page=&pageSize=`
+* Return `{ items, total, page, pageSize }`
+
+But you don’t need this immediately if virtualization solves the UI side.
+
+---
+
+## Recommended execution order
+
+1. Virtualization + memoization
+2. Export safety confirmations
+3. Auth banner consistency
+4. Visual regression + apiFetch contract tests
+5. Perf smoke test
+
+If you start now, begin with **virtualization**, because it’s the only change that materially shifts your scaling ceiling without touching the backend.

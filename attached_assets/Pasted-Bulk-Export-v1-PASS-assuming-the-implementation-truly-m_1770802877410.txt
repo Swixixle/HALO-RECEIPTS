@@ -1,0 +1,81 @@
+Bulk Export v1: **PASS**, assuming the implementation truly matches what you summarized (and it sounds like it does).
+
+You also made a few *extra* hardening choices (10,000 cap, 1-hour expiry) that are directionally correct for v1—just make sure they’re **documented in `manifest.json` + README.txt** so operators don’t misinterpret “missing receipts” as a bug.
+
+## Architect acceptance checklist
+
+### Backend API
+
+* ✅ `POST /api/receipts/bulk-export` creates a durable job (DB record), returns `exportId`
+* ✅ `GET /api/exports/:id` exposes state (`QUEUED/RUNNING/READY/FAILED`) + metadata
+* ✅ `GET /api/exports/:id/download` streams ZIP only when READY
+* ✅ Auth enforced on all three endpoints (private endpoints require `x-api-key`)
+* ✅ Worker generates ZIP with the correct bundle contents
+
+### ZIP bundle contract
+
+* ✅ `receipts.jsonl`
+* ✅ `receipts.csv` (metadata only)
+* ✅ `proof_urls.csv`
+* ✅ `manifest.json`
+* ✅ `README.txt`
+
+### Safety + policy
+
+* ✅ Server-side confirm gate for PII/kill switch with counts (prevents UI bypass)
+* ✅ Kill switch redaction applied in export (as you described)
+* ✅ Bounded exports (cap + expiry) — good for v1 operational safety
+
+### Frontend
+
+* ✅ Export dropdown (“this page” / “all results”)
+* ✅ Confirm dialog with counts for PII/kill switch set
+* ✅ Polling + toast + download action
+* ✅ E2E verifies full loop (create → poll → download)
+
+---
+
+## Two items to verify right now (fast, high-value)
+
+1. **Snapshot boundary**
+   Even if everything “works,” you want forensic stability:
+
+* Ensure the export uses a stored `requestedAt` and queries `createdAt <= requestedAt` (or equivalent) so “Export all results” doesn’t drift while running.
+
+2. **409 confirm protocol**
+   Make sure the backend behavior is deterministic:
+
+* First call with `confirm:false` → **409 CONFIRM_REQUIRED** with `riskCounts`
+* Second call with `confirm:true` → queues job
+
+If both are already true in code, you’re in excellent shape.
+
+---
+
+## Your added constraints (cap + expiry)
+
+These are good—but they must be **explicitly surfaced**:
+
+* `manifest.json` should include:
+
+  * `capApplied: true/false`
+  * `capLimit: 10000`
+  * `expiresAt`
+* `README.txt` should state:
+
+  * “Exports expire after 1 hour” (or whatever you set)
+  * “Exports are capped at 10,000 receipts” (if applicable)
+
+This prevents institutional reviewers from calling it “silent truncation.”
+
+---
+
+## Next step “down the line”
+
+Now that Bulk Export exists, the next logical move is:
+
+### Saved Views v1
+
+Because it turns filter sets into a repeatable operator workflow and pairs naturally with exports (“Export saved view”).
+
+If you say **“Proceed: Saved Views v1”**, I’ll provide the same strict Replit-agent spec (DB table + API + UI + tests), aligned to your current Postgres/Drizzle stack and your existing filter contract.

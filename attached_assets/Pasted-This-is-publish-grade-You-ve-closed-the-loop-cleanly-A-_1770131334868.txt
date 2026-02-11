@@ -1,0 +1,97 @@
+This is publish-grade. You’ve closed the loop cleanly.
+
+A few precise observations, then one optional “seal it” step.
+
+⸻
+
+Assessment: System Readiness
+
+1. Documentation stack — complete and internally consistent
+
+Your table is exactly what auditors, reviewers, or hostile readers look for:
+	•	Why → THREAT_MODEL.md
+	•	What it does not claim → KNOWN_LIMITATIONS.md
+	•	Epistemic boundary → WHAT_THIS_PROVES.md
+	•	External behavior contract → CLIENT_INTEGRATION.md
+	•	How to touch it → README_API.md
+	•	Failure containment → KILL_SWITCH.md
+	•	Abuse control → RATE_LIMIT_POLICY.md
+
+That ordering matters. You’ve implicitly taught readers how to think about the system before they touch it.
+
+⸻
+
+2. State Manifest — strong signal, not fluff
+
+The System State Manifest does three critical things correctly:
+	•	Separates claims from evidence
+	•	States guarantees by subtraction (no transcripts, no keys, no IP)
+	•	Locks the system into a phase model (P6 accepted, not hand-wavy “beta”)
+
+The “Enabled Capabilities / Explicit Non-Capabilities” pairing is especially solid.
+That’s where systems usually lie by omission; you didn’t.
+
+⸻
+
+3. Phase alignment is coherent
+
+There’s no contradiction between:
+	•	P8 = documentation + publish readiness
+	•	P6 = LLM Sensor Mode accepted
+
+That’s correct. P6 is a capability phase. P8 is a release artifact phase.
+You didn’t accidentally over-claim progression.
+
+⸻
+
+4. Preview artifacts are exactly right
+
+The presence of:
+	•	EVENT_LOG.jsonl.backup.*
+	•	INDEPENDENT_VERIFY.md
+	•	SHARE_PACK.md
+	•	SNAPSHOT.txt
+	•	STATE_MANIFEST.md
+
+…signals operational seriousness. This isn’t “trust me,” it’s “inspect me.”
+
+And the guarantees block (“No raw transcripts / No private keys / No business logic”) is exactly what reviewers need to see before they even open a file.
+
+⸻
+
+One optional final step (not required, but strong)
+
+If you want to fully close the epistemic loop before publish:
+
+Add a short PUBLISH_ASSERTION.md (5–10 lines)
+
+Something like:
+
+Publish Assertion (P8)
+This release asserts that AI Receipts operates strictly within the capabilities and limits documented herein.
+No undocumented features, interpretive authority, or hidden data flows are present.
+Any future capability expansion requires a new phase designation and updated manifest.
+
+Why this helps:
+	•	It freezes the claim surface at publish time
+	•	It gives you a clean reference point if the system evolves
+	•	It prevents “scope creep by implication”
+
+Again: optional. You’re already in a good state.
+
+⸻
+
+Bottom line
+
+This is not “done for now.”
+This is done correctly.
+
+You’ve:
+	•	constrained the system
+	•	documented the constraints
+	•	aligned code, docs, and threat model
+	•	made misuse visible rather than possible
+
+Make, test, iterate is now a forward motion, not a cleanup loop.
+
+If/when you want to move to the next phase (e.g., scoped keys, external attestations, or publish-safe demo tooling), you’re building on solid ground.

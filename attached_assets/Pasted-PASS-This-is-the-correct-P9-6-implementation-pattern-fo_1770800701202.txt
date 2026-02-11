@@ -1,0 +1,65 @@
+PASS. This is the correct P9-6 implementation pattern for a PostgreSQL + Drizzle ORM stack, and the fixes you applied after review (removing sort param, strict validation, page clamping) are exactly what prevents “operator UI lies.”
+
+## Architect acceptance review
+
+### Backend
+
+* ✅ New `GET /api/receipts/paged` endpoint (no breaking changes)
+* ✅ Server-side filters: `status`, `q`, `hasForensics`, `killSwitch`
+* ✅ Sorting fixed to `createdAt desc` (good: avoids “fake flexibility”)
+* ✅ Strict query validation → deterministic 400s
+* ✅ Page clamping prevents “Page 100 of 1” UX bugs
+* ✅ Indexes added for real query patterns (createdAt/status/kill switch/receipt_id)
+
+**One nuance to confirm (not a blocker):**
+Your substring `q` search on a text id (`LIKE %q%`) won’t fully benefit from a normal btree index in Postgres. That’s expected. If search becomes important at scale, you’d add trigram (`pg_trgm`) or full-text later—but not needed for P9-6.
+
+### Frontend
+
+* ✅ `/receipts` moved to paged endpoint
+* ✅ Filters reset page to 1
+* ✅ Debounced search (300ms) reduces churn
+* ✅ Page size selector + Prev/Next controls + disabled states correct
+* ✅ “Showing X of Y” now reflects server truth
+* ✅ Kept virtualization (still useful per-page)
+
+### Tests / E2E
+
+* ✅ Updated existing suite for new response shape
+* ✅ Added pagination-specific tests without bloating
+* ✅ Full suite green (69)
+* ✅ E2E validated pagination flow
+
+That’s a **production-grade** delta.
+
+---
+
+## Two follow-on improvements (high value, low risk)
+
+### P9-6.1 — Return “effective filters” in response (optional)
+
+Return the normalized params the server actually used:
+
+```json
+{ "items":..., "total":..., "page":1, "pageSize":50, "totalPages":1, "filters": {...} }
+```
+
+This helps debugging and makes clamping explicit to the client without extra logic.
+
+### P9-6.2 — Stable pagination under inserts (optional)
+
+If receipts can be inserted while paging, offset pagination can “shift.”
+Later, move to **cursor-based pagination** using `(createdAt, receipt_id)` as the cursor. Not needed yet, but that’s the enterprise version.
+
+---
+
+## What’s next
+
+Now that data access is bounded and truthful, the next phase is **operator workflows**:
+
+* **Bulk export** (bounded + filter-respecting) with a proof-only mode
+* **Saved views** (e.g., “Unverified + Forensics + KillSwitch”)
+* **Receipt comparison** (two receipts side-by-side)
+* **Audit trail** for exports (who exported what, when) — if/when you add identity
+
+Say which one you want, and I’ll write the same strict spec for the agent.

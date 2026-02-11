@@ -1,0 +1,58 @@
+Approved — this is the correct P9-4 closeout, and the implementation choices are structurally sound.
+
+## Final architect review: PASS (with two guardrails)
+
+### What you did right
+
+* **Single source of truth** for auth header injection via `apiFetch`.
+* **Dev/test-only behavior**, so you didn’t accidentally bake credentials into production behavior.
+* **Scoped injection** to private endpoints (and not `/api/public/**`) — correct.
+* **Query + mutation routing** through the same pipe — closes the “half-fixed” failure mode.
+* Full regression coverage: unit + integration + E2E all green.
+
+That’s the exact shape you want for an operator UI that must remain audit-grade.
+
+---
+
+## Two guardrails I want you to add (small, but worth it)
+
+### 1) Hard fail *loudly* in dev/test if the key is missing (optional but recommended)
+
+Right now, if `VITE_DEV_API_KEY` isn’t set, requests will silently 401/403. That’s annoying and can waste time.
+
+In `apiFetch`, add a dev-only warning (or throw for clearly private endpoints) when:
+
+* dev/test/e2e mode AND
+* request is private endpoint AND
+* no `VITE_DEV_API_KEY`
+
+**Best practice:** `console.warn` (not throw) in dev; **throw** in E2E mode to prevent false positives.
+
+Pseudo:
+
+* if `MODE === "e2e"` and missing key → throw `Error("Missing VITE_DEV_API_KEY for E2E")`
+* else warn once (use a module-level flag)
+
+This makes failures deterministic.
+
+### 2) Ensure the key can’t be committed by accident
+
+* Confirm `.env*` files are in `.gitignore` (especially `.env`, `.env.local`, `.env.e2e`)
+* In Replit, Secrets are fine — but make sure there isn’t a fallback constant anywhere.
+
+This is a hygiene requirement, not optional.
+
+---
+
+## Release checklist (P9-4 complete)
+
+* ✅ `/receipts` is table-based, dense, filterable, consistent with Halo language
+* ✅ Forensics flags render from `forensicsJson` robustly
+* ✅ Kill switch filter works
+* ✅ Actions: View / Proof / Export correct
+* ✅ No backend changes
+* ✅ All tests pass (41) + E2E pass (20 steps)
+
+You can merge `p9-4-receipts-table` to main.
+
+If you want the next “architect-grade” move: add a **single screenshot-based visual regression** of `/receipts` (one golden state) so the table doesn’t quietly degrade later.

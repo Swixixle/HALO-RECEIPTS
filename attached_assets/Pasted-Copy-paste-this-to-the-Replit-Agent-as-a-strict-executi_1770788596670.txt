@@ -1,0 +1,105 @@
+Copy/paste this to the Replit Agent as a **strict execution order**. It includes both guardrails and explicitly forbids “helpful” deviations.
+
+---
+
+### Replit Agent — STRICT INSTRUCTIONS (NO DEVIATIONS)
+
+You will implement **exactly** the two guardrails below.
+**Do not refactor** unrelated code.
+**Do not rename** files, env vars, or endpoints.
+**Do not change** production behavior.
+Make only the minimal diffs required and then run the full test suite + E2E.
+
+---
+
+## Guardrail 1 — Loud failure when `VITE_DEV_API_KEY` is missing (dev/test/e2e only)
+
+### Files
+
+* `src/lib/apiFetch.ts`
+
+### Requirements
+
+1. If environment is **E2E** (`import.meta.env.MODE === "e2e"`) and a request is to a **private API endpoint** (`/api/**` but not `/api/public/**`) and `VITE_DEV_API_KEY` is missing:
+
+   * **throw**: `new Error("Missing VITE_DEV_API_KEY (required for E2E private API calls)")`
+2. If environment is **dev or test** and request is private and key is missing:
+
+   * `console.warn(...)` **only once** per runtime (module-level flag)
+3. Do **not** inject headers in production mode.
+4. Do **not** inject headers for `/api/public/**`.
+5. Do **not** add any fallback constants or hardcoded keys.
+
+### Patch (implement exactly this behavior)
+
+Update `apiFetch` to include:
+
+* module-level boolean:
+
+  * `let warnedMissingKey = false;`
+* logic:
+
+  * Determine `mode` from `import.meta.env.MODE`
+  * Determine `isDevLike` = `env.DEV || mode === "test" || mode === "e2e"`
+  * Determine `isPrivateApi` from URL
+  * If `isDevLike && isPrivateApi && !devKey`:
+
+    * if `mode === "e2e"` → throw Error (message above)
+    * else if `!warnedMissingKey` → `console.warn("Missing VITE_DEV_API_KEY. Set it in Replit Secrets (dev/test) to access private endpoints.")`; set flag true
+  * If `devKey` exists and header absent → set header `x-api-key`
+
+Do not change anything else in the file.
+
+---
+
+## Guardrail 2 — Ensure `.env*` can’t be committed
+
+### Files
+
+* `.gitignore` (root)
+
+### Requirements
+
+1. Add ignores for all env variants:
+
+   * `.env`
+   * `.env.*`
+   * `.env.local`
+   * `.env.e2e`
+2. Do not remove existing ignore rules.
+3. Do not add any new env files to the repo.
+
+---
+
+## Validation steps (must run in this exact order)
+
+1. Run all unit/integration tests (must pass):
+
+   * receipts table tests (21)
+   * scanner tests (10)
+   * verify tests (10)
+   * total expected: **41 passing**
+2. Run E2E (must pass).
+3. Confirm `apiFetch` contains **no hardcoded key** and only reads `import.meta.env.VITE_DEV_API_KEY`.
+
+---
+
+## Output required from you (Replit Agent)
+
+After completion, return:
+
+1. The exact diff summary:
+
+   * which files changed
+   * what lines/blocks were added
+2. Test results:
+
+   * confirmation that **41 tests pass**
+   * E2E pass confirmation
+3. A 1-line statement confirming:
+
+   * “No production header injection; no public endpoint injection.”
+
+---
+
+If the agent tries to “improve” anything else, stop and revert those changes.

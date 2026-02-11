@@ -1,0 +1,145 @@
+Got it — on Replit, do it with a server-side proxy so your x-api-key lives only in Secrets and never touches the browser.
+
+Below is the clean, working pattern.
+
+⸻
+
+1) Put secrets in Replit Secrets (the lock icon)
+
+Create these keys:
+	•	RECEIPTS_API_URL → https://<your-verifier-domain> (no trailing slash)
+	•	RECEIPTS_API_KEY → your key value (the one the API wants in x-api-key)
+
+Example:
+	•	RECEIPTS_API_URL = https://receipts.yourdomain.com
+	•	RECEIPTS_API_KEY = ********
+
+⸻
+
+2) Add a proxy endpoint in your Replit backend
+
+If your backend is Express
+
+In index.js / server.js (where you define routes):
+
+import express from "express";
+
+const app = express();
+app.use(express.json({ limit: "1mb" }));
+
+app.post("/api/verify", async (req, res) => {
+  const apiUrl = process.env.RECEIPTS_API_URL;
+  const apiKey = process.env.RECEIPTS_API_KEY;
+
+  if (!apiUrl || !apiKey) {
+    return res.status(500).json({
+      error: "Server misconfigured",
+      message: "Missing RECEIPTS_API_URL or RECEIPTS_API_KEY in Replit Secrets"
+    });
+  }
+
+  let upstream;
+  try {
+    upstream = await fetch(`${apiUrl}/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey
+      },
+      body: JSON.stringify(req.body)
+    });
+  } catch (e) {
+    return res.status(502).json({
+      error: "Upstream unreachable",
+      message: String(e?.message || e)
+    });
+  }
+
+  const contentType = upstream.headers.get("content-type") || "application/json";
+  const text = await upstream.text();
+
+  res.status(upstream.status);
+  res.type(contentType);
+  return res.send(text);
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Server listening on ${port}`));
+
+✅ This route:
+	•	receives the JSON from the browser
+	•	injects the x-api-key from Secrets
+	•	forwards to your protected /verify
+	•	returns the upstream result
+
+⸻
+
+3) Update the frontend to call your proxy (NOT the upstream API)
+
+Wherever your “Verify & Save” button currently does a fetch, change it to:
+
+const resp = await fetch("/api/verify", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(capsuleObj)
+});
+
+const data = await resp.json();
+if (!resp.ok) throw new Error(data?.message || "Verification failed");
+
+Now the browser never needs the API key.
+
+⸻
+
+4) Quick test (fastest way to confirm it works)
+
+In Replit Shell, run:
+
+curl -s -X POST "https://YOUR-REPLIT-URL/api/verify" \
+  -H "Content-Type: application/json" \
+  -d '{"receipt_version":"1.0","session_id":"test","hash_algorithm":"SHA-256","signature_algorithm":"Ed25519","lines_verified":31,"final_hash":"a3c89ec76110f779189ef1e442897a5b45f59fb9a09362751f7ba27986288d9a","verification_status":"PASS"}' \
+  | head
+
+If secrets are set correctly, you should see the verifier’s JSON response instead of a 401.
+
+⸻
+
+5) One important Replit detail: Node fetch
+
+On modern Node (18+), fetch exists globally. If your Replit is older, install and import:
+
+npm i node-fetch
+
+Then at top:
+
+import fetch from "node-fetch";
+
+(If it works already, don’t add it.)
+
+⸻
+
+6) Hardening you should add (2 minutes)
+
+A) Limit payload size (already set to 1mb)
+
+Keep that unless you truly need bigger.
+
+B) Verify-only vs Save-only keys
+
+If you have /save, use a different key on the server for save routes.
+
+C) Don’t log secrets
+
+Never console.log(process.env.RECEIPTS_API_KEY).
+
+⸻
+
+Why this solves your exact screenshot
+
+Your UI was calling the upstream API directly → no x-api-key header → 401.
+
+Now the UI calls /api/verify on your Replit server → server adds header → upstream verifies.
+
+⸻
+
+If you paste (or summarize) the part of your Replit code where the button calls the API (the fetch call + endpoint URL), I’ll tell you exactly what to replace line-by-line.

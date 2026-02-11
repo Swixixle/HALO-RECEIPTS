@@ -1,0 +1,221 @@
+Understood. Below is the authoritative instruction packet to the Replit agent. It is written to be pasted verbatim. It freezes scope, forces evidence, and prevents “AI judge” drift while adding Grok + the other sensor adapters and “whatever is left” in a controlled way.
+
+⸻
+
+DIRECTIVE TO REPLIT AGENT (AUTHORITATIVE)
+
+Project: AI Receipts Forensic System
+Current status: P0–P6 implemented; share pack hardened; milestone logging expanded.
+New objective: Complete Sensor Coverage + Close Remaining Gaps without adding “AI judge” features.
+
+0) PRIME CONSTRAINTS (NON-NEGOTIABLE)
+	1.	LLMs are Sensors, not Authorities. They may observe / describe / extract only.
+	2.	No truth-judgment language. Never output or store: “true/false/correct/incorrect/proves/disproves/hallucination.”
+	3.	LLMs cannot see verification state. LLM inputs must contain transcript-only (respecting transcript mode).
+	4.	LLM outputs never affect verification_status, integrity, signature, chain, or forensics.
+	5.	LLM outputs never enter research dataset exports.
+	6.	Kill switch blocks all sensor endpoints.
+	7.	Everything must be evidenced: every subtask ends with tests + forensic_state entry + share pack rebuild.
+
+You are to implement the items below in order. Do not skip steps.
+
+⸻
+
+1) P6.2 — SENSOR ADAPTER REGISTRY + UNIVERSAL NAMING
+
+1.1 Canonical naming
+
+Adopt and enforce model_id format:
+provider:model
+
+Provider allowlist:
+	•	openai
+	•	anthropic
+	•	google
+	•	xai
+	•	meta
+	•	mistral
+	•	cohere
+	•	perplexity
+	•	deepseek
+	•	qwen
+	•	other
+
+Validation regex:
+	•	^[a-z0-9_-]+:[a-z0-9_.-]+$
+
+1.2 Adapter registry
+
+Create: server/llm/adapters/index.ts
+	•	getAdapter(provider) returns an adapter module or throws UNSUPPORTED_PROVIDER
+	•	Registry must be the single dispatch point used by all observation endpoints.
+
+1.3 Frozen adapter interface (do not change later)
+
+export interface LlmSensorAdapter {
+  buildRequest(transcript: { messages: { role: string; content: string }[] }, opts?: any): any
+  parseResponse(raw: any): { schema: "llm-observation/1.0"; model_id: string; disclaimers: string[]; limitations: string[]; confidence: { level: "low"|"medium"|"high"; rationale: string }; observations: any }
+}
+
+1.4 Stub all providers, implement none except existing
+	•	For each provider in allowlist: create server/llm/adapters/<provider>.ts
+	•	If provider not yet configured (no API/base URL), return 501 NOT_IMPLEMENTED (do not fake).
+	•	Keep the system honest: stubs exist, but they do not pretend to work.
+
+Evidence required:
+	•	tests that:
+	•	reject invalid model_id format (400)
+	•	reject unsupported provider (400)
+	•	return 501 for stub providers
+	•	Log forensic_state event: P6_2_ADAPTER_REGISTRY_READY
+	•	Rebuild share pack
+
+STOP and report once complete.
+
+⸻
+
+2) P6.3 — ADD GROK + “OTHER SENSORS” AS REAL ADAPTERS (CONFIG-GATED)
+
+2.1 Add xAI Grok adapter (REAL)
+
+Implement server/llm/adapters/xai.ts for xai:grok-* using environment config:
+	•	XAI_API_KEY
+	•	XAI_BASE_URL (optional; default official endpoint)
+	•	If missing config: return 501 NOT_IMPLEMENTED with explicit reason.
+
+2.2 Add the other sensors as adapters (REAL IF CONFIG PRESENT; OTHERWISE 501)
+
+Implement provider adapters (not model-specific) for:
+	•	openai
+	•	anthropic
+	•	google
+	•	meta
+	•	mistral
+	•	cohere
+	•	perplexity
+	•	deepseek
+	•	qwen
+
+Rule:
+	•	If provider key/env not present, adapter must return 501 NOT_IMPLEMENTED (do not fake).
+	•	If present, implement minimal “sensor call” path: transcript in → observation out.
+	•	Keep everything transcript-only.
+
+2.3 Enabled sensors allowlist
+
+Add env-driven allowlist:
+	•	ENABLED_SENSORS comma-separated list of provider:model strings.
+	•	Requests for any model not in allowlist → 403 SENSOR_DISABLED.
+
+Default in dev:
+	•	Include only those providers with keys actually present. Otherwise empty.
+
+Evidence required:
+	•	Grok happy path (if key present) OR explicit 501 if not present (with reason)
+	•	One stub provider example showing 501 if missing key
+	•	SENSOR_DISABLED test
+	•	Log events:
+	•	P6_3_XAI_ADAPTER_READY
+	•	P6_3_MULTI_PROVIDER_ADAPTERS_READY
+	•	Rebuild share pack
+
+STOP and report once complete.
+
+⸻
+
+3) P6.4 — MULTI-SENSOR DISAGREEMENT (NON-RECONCILING)
+
+Update POST /api/receipts/:id/observe/multi:
+
+Requirements:
+	1.	Accept array of model_ids (must be enabled)
+	2.	Run each independently (no cross-talk)
+	3.	Return:
+	•	array of observations
+	•	disagreement indicators ONLY (boolean + structured diffs)
+	4.	No reconciliation and no winner selection
+	5.	Language hygiene filter must run on each observation
+
+Evidence required:
+	•	Multi-sensor run with at least 3 sensors (or 501 for unavailable ones) still produces a deterministic response:
+	•	If any sensor returns 501, report it as sensor_unavailable not as failure of the whole request.
+	•	Kill switch blocks multi observe (403)
+	•	Log event: OBSERVE_MULTI_CREATED
+	•	Add samples/p6_4_multi_sensor_evidence.md
+	•	Rebuild share pack
+
+STOP and report once complete.
+
+⸻
+
+4) P6.5 — HARDEN LANGUAGE HYGIENE (OBFUSCATION)
+
+Known limitation: “c o r r e c t” or unicode lookalikes can bypass forbidden word detection.
+
+Implement:
+	•	Normalize output text:
+	•	collapse whitespace between letters
+	•	unicode normalize (NFKC)
+	•	strip punctuation between letters
+Then re-run forbidden term checks.
+
+Do not overreach; keep it targeted to your forbidden list.
+
+Evidence required:
+	•	Test that c o r r e c t triggers rejection
+	•	Test that cоrrect (Cyrillic o) triggers rejection
+	•	Log event: P6_5_LANGUAGE_HYGIENE_HARDENED
+	•	Rebuild share pack
+
+STOP and report once complete.
+
+⸻
+
+5) “WHATEVER IS LEFT” — CLOSE THE LOOP ON PUBLIC PROOF
+
+We want a folder the user can share that proves the machine works without leaking IP.
+
+5.1 Independent verification doc
+
+If not already present, add:
+	•	forensic_state/INDEPENDENT_VERIFY.md
+
+Must include:
+	•	how to verify hash-chain EVENT_LOG with only standard tools
+	•	how to grep forbidden strings
+	•	how to validate share pack integrity
+
+5.2 Single command proof update
+
+Ensure npm run proof:update exists and runs:
+	1.	verify forensic_state chain
+	2.	snapshot
+	3.	build share pack
+	4.	append PROOF_PACK_UPDATED event
+
+Evidence required:
+	•	Provide sample output of npm run proof:update
+	•	Log event: P6_SHARE_PACK_VERIFIER_READY
+	•	Rebuild share pack
+
+STOP and report once complete.
+
+⸻
+
+6) DO NOT PROCEED TO P7+ WITHOUT USER APPROVAL
+
+After completing steps 1–5, pause. Do not add features.
+
+⸻
+
+Final output format (every stop point)
+
+When you finish each section, respond with:
+	•	✅ Completed items list
+	•	Evidence files added (paths)
+	•	New forensic_state event name + last line hash
+	•	Any 501s due to missing keys (explicitly stated)
+
+⸻
+
+That’s the directive. Execute in order, no improvisation.
