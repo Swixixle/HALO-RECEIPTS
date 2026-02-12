@@ -25,4 +25,4 @@ jobs:
 
       - name: Run TypeScript E2E suite
         run: |
-          npx tsx scripts/verify-public-mode.test.ts
+          ./node_modules/.bin/tsx scripts/verify-public-mode.test.ts
