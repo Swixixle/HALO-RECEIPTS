@@ -1,0 +1,24 @@
+run = "npm run dev"
+entrypoint = "server/index.ts"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "npm run build && npm run start"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[languages]
+[languages.typescript]
+pattern = "**/*.ts"
+
+[languages.typescript.languageServer]
+start = "typescript-language-server --stdio"
+
+[env]
+NODE_ENV = "development"
+PORT = "5000"
