@@ -2,6 +2,17 @@
 
 **90-Second Overview**: AI Receipts provides cryptographic proof that AI conversation transcripts have not been tampered with. It does not claim truth about what the AI said -- only that the record is intact.
 
+## Quick Demo (Replit)
+
+**For non-technical evaluators**: Run this app in Replit in under 5 minutes. See [docs/REPLIT_SETUP.md](./REPLIT_SETUP.md) for step-by-step instructions.
+
+The operator-first UI provides:
+- **Start Here**: Guided workflow and system introduction (landing page)
+- **Use Cases**: Industry-specific verification patterns
+- **Browse Receipts**: Workflow chips (Verify → Inspect → Export) + collapsible advanced actions
+
+Server listens on **port 5000** by default.
+
 ## What This System Proves
 
 1. **Hash chain integrity** -- Every audit event is SHA-256 chained to its predecessor, making silent modification detectable.

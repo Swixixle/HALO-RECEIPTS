@@ -12,10 +12,72 @@ For detailed documentation, see [replit.md](./replit.md)
 
 ## Quick Start
 
-### Run on Replit (Recommended for Quick Setup)
+### Replit Quickstart (Operator Demo)
 
-1. Click the "Run on Replit" badge above
-2. Follow the setup guide in [docs/REPLIT_SETUP.md](./docs/REPLIT_SETUP.md)
+**For non-technical evaluators**: Run this app in Replit in under 5 minutes.
+
+1. **Import from GitHub**
+   - Click the "Run on Replit" badge above, or
+   - In [Replit](https://replit.com), click "Create Repl" → "Import from GitHub"
+   - Paste this repository URL
+
+2. **Install Dependencies**
+   ```bash
+   npm ci
+   ```
+   - If `npm ci` fails due to lockfile mismatch (e.g., missing `bufferutil`):
+     - Run `npm install` instead
+     - Commit the updated `package-lock.json` in a small PR
+
+3. **Set up PostgreSQL Database**
+   - Click "Tools" sidebar in Replit
+   - Add "PostgreSQL" database
+   - The `DATABASE_URL` will be automatically added to your Secrets
+
+4. **Initialize Database Schema**
+   ```bash
+   npm run db:push
+   ```
+
+5. **Run the Development Server**
+   ```bash
+   npm run dev
+   ```
+   - Server listens on port 5000 (http://localhost:5000)
+   - Replit webview will auto-open
+
+**How to Use:**
+- **Start Here**: Guided workflow for new users
+- **Use Cases**: Industry menu + pattern library
+- **Browse Receipts**: Open any receipt, then follow the workflow chips:
+  - Verify → Inspect → Export
+  - Use the collapsible advanced actions for deeper operations
+
+**Troubleshooting:**
+
+Port 5000 already in use (EADDRINUSE):
+```bash
+pkill -f "tsx server/index.ts" || true
+pkill -f "server/index.ts" || true
+pkill -f "vite" || true
+npm run dev
+```
+
+Clean reinstall:
+```bash
+rm -rf node_modules && npm ci
+```
+
+Note: You may see an `EBADENGINE` warning depending on Replit's Node version. This is informational only; the app will still run.
+
+**Notes for Contributors (Replit ↔ GitHub):**
+- Replit paste artifacts (`attached_assets/Pasted-*.txt`) are ignored via `.gitignore`
+- GitHub blocks OAuth apps from modifying `.github/workflows/*` without `workflow` scope
+  - Either don't edit workflows from Replit OAuth, or
+  - Use a personal access token with `workflow` scope, or
+  - Edit workflows directly in GitHub
+
+For more details, see [docs/REPLIT_SETUP.md](./docs/REPLIT_SETUP.md)
 
 ### Local Development
 

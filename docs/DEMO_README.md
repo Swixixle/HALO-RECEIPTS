@@ -24,36 +24,58 @@ See [PROOF_SPINE.md](./PROOF_SPINE.md) for the full invariant specification.
 
 ### Step 1: Open the App
 
-Navigate to the deployed HALO-RECEIPTS application.
+Navigate to the deployed HALO-RECEIPTS application. The landing page is **Start Here**.
 
-### Step 2: Verify a Demo Receipt (ProofPack Lookup)
+**Start Here** provides a guided workflow:
+- Introduction to the verification system
+- Walkthrough of core features
+- Links to Use Cases and Browse Receipts
 
-1. On the **Verify** page, toggle the **"ProofPack lookup"** switch
-2. Click the **"Try Demo"** button -- this pre-fills a known-good receipt ID
-3. Click **Verify**
-4. You should see three green badges:
+### Step 2: Explore Use Cases
+
+1. From **Start Here**, click **Use Cases** in the navigation
+2. Browse industry-specific patterns:
+   - Compliance & Audit
+   - Customer Support
+   - Legal & Regulatory
+3. Each use case explains how cryptographic verification applies to that domain
+
+**What this shows**: The operator-first UI organizes workflows by industry need, not technical jargon.
+
+### Step 3: Browse Receipts (Workflow Chips)
+
+1. Click **Browse Receipts** in the navigation
+2. Open any receipt from the list
+3. Follow the **workflow chips** at the top:
+   - **Verify** → Cryptographic hash check
+   - **Inspect** → View receipt details and interpretation
+   - **Export** → Download forensic pack
+4. Use the **collapsible advanced actions** for:
+   - Kill Switch (disable interpretation)
+   - Chain Analysis
+   - Signature Details
+
+**What this shows**: Each receipt guides the operator through verification and analysis steps in a clear, linear path.
+
+### Step 4: Verify a Receipt (ProofPack Lookup)
+
+1. On any receipt detail page, click the **Verify** chip
+2. The system performs three checks:
    - **HASH**: MATCH (SHA-256 integrity confirmed)
    - **SIGNATURE**: Shows signature status
    - **AUDIT CHAIN**: Shows chain link status
+3. Green badges indicate successful verification
 
-**What just happened**: The system looked up a pre-verified receipt and returned its cryptographic proof status. No transcript content was returned.
+**What just happened**: The system verified the receipt's cryptographic proof status. No transcript content was modified; only integrity was confirmed.
 
-### Step 3: Try the Proof-Gated Lantern
+### Step 5: Test the Proof Gate (Optional)
 
-1. Navigate to the **Lantern** page (sidebar)
-2. Click **"Try Demo"** -- pre-fills the demo receipt ID
+1. Navigate to the **Lantern** page (if available)
+2. Click **"Try Demo"** to pre-fill a verified receipt ID
 3. Type any question (e.g., "What was discussed?")
-4. Click **Send**
-5. Lantern responds because the receipt is VERIFIED
-
-**What just happened**: Lantern checked the receipt's proof status before responding. If the receipt were tampered with or unverified, Lantern would refuse.
-
-### Step 4: Test the Proof Gate (Optional)
-
-1. On the **Lantern** page, clear the receipt ID
-2. Enter a fake ID like `fake-receipt-999`
-3. Type a question and click Send
-4. Lantern refuses with a clear error: "Receipt not found"
+4. Lantern responds because the receipt is VERIFIED
+5. Try entering a fake ID like `fake-receipt-999`
+6. Lantern refuses with a clear error: "Receipt not found"
 
 This demonstrates the proof gate -- Lantern cannot be tricked into responding about unverified data.
 
