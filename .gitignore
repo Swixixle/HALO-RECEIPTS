@@ -14,7 +14,7 @@ vite.config.ts.*
 .env.e2eout/
 tmp/
 tmp/bulk-exports/
- /tmp/bulk-exports/
+/tmp/bulk-exports/
 
 # Ignore Replit pasted artifacts
 attached_assets/Pasted-*.txt
