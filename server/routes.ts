@@ -1,11 +1,13 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import { canonicalize, computeHash } from "./c14n";
 import { computeForensics } from "./forensics";
 import { verifySignature, type SignatureVerificationResult } from "./key-registry";
 import { verifyChainLink, computeReceiptHash, buildCapsuleCore, type ChainVerificationResult } from "./chain-verification";
-import { verifyRequestSchema, interpretRequestSchema, type VerifyResult, type TriSensorResult, type ExportReport, type ForensicsResult } from "@shared/schema";
+import { verifyRequestSchema, interpretRequestSchema, lanternFollowupSchema, type VerifyResult, type TriSensorResult, type ExportReport, type ForensicsResult, type ProofPack, type Receipt } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { fromError } from "zod-validation-error";
 import { verifyLimiter, publicVerifyLimiter, getClientIp } from "./rate-limiter";
@@ -27,12 +29,43 @@ import {
   PUBLIC_ERROR_CODES,
   TRANSCRIPT_MODE_CONTRACT,
 } from "@shared/public-contract";
-import { bulkExportRequestSchema } from "@shared/schema";
+import { bulkExportRequestSchema, createSavedViewSchema, updateSavedViewSchema } from "@shared/schema";
 import { generateBulkExport, getExportFilePath, exportFileExists } from "./bulk-export";
 import { llmObservationRequestSchema, multiModelObservationRequestSchema } from "@shared/llm-observation-schema";
 import { logMilestone } from "./forensic-log";
+import { logAuditVerifyResult, logAdapterError, getCounters, logReadyCheck, logVerifyLatency } from "./instrumentation";
+import { getVersionInfo } from "./version";
 
-const ENGINE_ID = "replit-node-verifier/0.1.0";
+const ENGINE_ID = getVersionInfo().engineId;
+
+function apiError(res: Response, code: number, message: string, detail?: string): void {
+  res.status(code).json({
+    error: { code, message, ...(detail ? { detail } : {}) },
+  });
+}
+
+async function logAudit(action: string, opts: {
+  receiptId?: string;
+  exportId?: string;
+  savedViewId?: string;
+  payload?: Record<string, unknown>;
+  req?: import("express").Request;
+} = {}): Promise<void> {
+  try {
+    await storage.appendAuditEvent({
+      action,
+      actor: "operator",
+      receiptId: opts.receiptId ?? null,
+      exportId: opts.exportId ?? null,
+      savedViewId: opts.savedViewId ?? null,
+      payload: JSON.stringify(opts.payload ?? {}),
+      ip: opts.req ? getClientIp(opts.req) : null,
+      userAgent: opts.req?.headers["user-agent"]?.slice(0, 256) ?? null,
+    });
+  } catch (err) {
+    console.error("Audit log write failed:", err);
+  }
+}
 
 // Helper to convert interpretation bucket back to representative count for export
 function bucketToCount(bucket: string): number {
@@ -221,13 +254,228 @@ function redactPii(text: string): string {
     .replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, "[IP REDACTED]");
 }
 
+async function buildProofPack(receipt: Receipt): Promise<ProofPack> {
+  let rawCapsule: any = {};
+  try {
+    rawCapsule = JSON.parse(receipt.rawJson);
+  } catch {}
+
+  let auditStatus: "LINKED" | "EMPTY" | "DEGRADED" = "DEGRADED";
+  let headHash: string | null = null;
+  let headSeq: number | null = null;
+  let totalEvents = 0;
+
+  try {
+    const [head, eventCount] = await Promise.all([
+      storage.getAuditHead(),
+      storage.getAuditEventCount(),
+    ]);
+    totalEvents = eventCount;
+    if (head) {
+      headHash = head.lastHash;
+      headSeq = head.lastSeq;
+      auditStatus = head.lastHash !== "GENESIS" ? "LINKED" : "EMPTY";
+    } else {
+      auditStatus = eventCount === 0 ? "EMPTY" : "DEGRADED";
+    }
+  } catch {
+    auditStatus = "DEGRADED";
+  }
+
+  return {
+    schema: "ai-receipt/proof-pack/1.0",
+    receipt_id: receipt.receiptId,
+    platform: receipt.platform,
+    captured_at: receipt.capturedAt,
+    verified_at: receipt.verifiedAt,
+    verification_status: receipt.verificationStatus as "VERIFIED" | "PARTIALLY_VERIFIED" | "UNVERIFIED",
+    kill_switch_engaged: receipt.hindsightKillSwitch === 1,
+    integrity: {
+      hash_match: receipt.hashMatch === 1,
+      computed_hash_sha256: receipt.computedHashSha256,
+      expected_hash_sha256: receipt.expectedHashSha256,
+      receipt_hash_sha256: receipt.receiptHashSha256 || "",
+      canonicalization: "c14n-v1",
+    },
+    signature: {
+      status: (receipt.signatureStatus || "NO_SIGNATURE") as "VALID" | "INVALID" | "UNTRUSTED_ISSUER" | "NO_SIGNATURE",
+      algorithm: rawCapsule.signature?.alg || null,
+      public_key_id: rawCapsule.signature?.public_key_id || null,
+      issuer_id: receipt.signatureIssuerId || null,
+      issuer_label: receipt.signatureIssuerLabel || null,
+      key_governance: {
+        key_status: (receipt.signatureKeyStatus as "ACTIVE" | "REVOKED" | "EXPIRED" | null) || null,
+        valid_from: null,
+        valid_to: null,
+        revoked_reason: null,
+      },
+    },
+    chain: {
+      status: (receipt.chainStatus || "NOT_CHECKED") as "GENESIS" | "LINKED" | "BROKEN" | "NOT_CHECKED",
+      previous_receipt_id: receipt.previousReceiptId || null,
+      previous_receipt_hash: rawCapsule.previous_receipt_hash_sha256 || null,
+      is_genesis: !receipt.previousReceiptId && receipt.chainStatus === "GENESIS",
+      link_verified: receipt.chainStatus === "LINKED" || receipt.chainStatus === "GENESIS",
+    },
+    audit: {
+      total_events: totalEvents,
+      head_hash: headHash,
+      head_seq: headSeq,
+      status: auditStatus,
+    },
+    proof_scope: ["integrity", "signature", "chain"] as const,
+    proof_scope_excludes: ["truth", "completeness", "authorship_intent"] as const,
+    _contract: {
+      proof_pack_version: "1.0",
+      transcript_included: false,
+      observations_included: false,
+      research_data_included: false,
+      integrity_proofs_only: true,
+    },
+  };
+}
+
+const DEMO_RECEIPT_ID = "halo-demo-receipt-001";
+
+const DEMO_CAPSULE = {
+  schema: "ai-receipt/1.0" as const,
+  receipt_id: DEMO_RECEIPT_ID,
+  platform: "halo-demo",
+  captured_at: "2025-12-01T10:30:00Z",
+  capture_agent: "halo-receipts/demo-seed",
+  transcript: {
+    embedded: true,
+    canonicalization: "c14n-v1",
+    messages: [
+      { role: "user", content: "What are the three laws of robotics?" },
+      { role: "assistant", content: "The Three Laws of Robotics, formulated by Isaac Asimov, are:\n\n1. A robot may not injure a human being or, through inaction, allow a human being to come to harm.\n2. A robot must obey the orders given it by human beings except where such orders would conflict with the First Law.\n3. A robot must protect its own existence as long as such protection does not conflict with the First or Second Law." },
+    ],
+  },
+  transcript_hash_sha256: "bc69a63704dd02089b7c746ceb507b862fc8db449fd8ffaa6e7bba7e6811fd3d",
+  signature: {
+    alg: "Ed25519",
+    public_key_id: "halo-demo-key-001",
+    value: "Y9fS+Qa/c/GTgdKGiIZz8lkgxx2BBSB6nTIupFH3xi5iPRGJpkVgxJRp1cuvle2QKn41JqEyFuqk7U/NBZ5iDg==",
+  },
+  public_verify_url: `/api/proofpack/${DEMO_RECEIPT_ID}`,
+};
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   
-  app.get("/health", (_req, res) => {
-    res.json({ ok: true });
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      status: "ok",
+      time: new Date().toISOString(),
+      version: ENGINE_ID,
+    });
+  });
+
+  app.get("/api/ready", async (_req, res) => {
+    const start = Date.now();
+    let dbOk = false;
+    try {
+      await db.execute(sql`SELECT 1`);
+      dbOk = true;
+    } catch {}
+
+    let auditHeadOk = false;
+    try {
+      const head = await storage.getAuditHead();
+      auditHeadOk = head !== null || (await storage.getAuditEventCount()) === 0;
+    } catch {}
+
+    const status = dbOk && auditHeadOk ? "ok" : "degraded";
+    const code = dbOk ? 200 : 503;
+    logReadyCheck(Date.now() - start, status, dbOk, auditHeadOk);
+    res.status(code).json({
+      status,
+      ready: dbOk,
+      time: new Date().toISOString(),
+      version: ENGINE_ID,
+      db: { ok: dbOk },
+      audit: { ok: auditHeadOk },
+    });
+  });
+
+  app.get("/api/health/metrics", requireAuth, (_req, res) => {
+    res.json({ counters: getCounters() });
+  });
+
+  app.post("/api/demo/seed", rateLimitPublic, async (_req, res) => {
+    try {
+      const existing = await storage.getReceipt(DEMO_RECEIPT_ID);
+      if (existing) {
+        return res.json({ status: "exists", receipt_id: DEMO_RECEIPT_ID, verification_status: existing.verificationStatus });
+      }
+
+      const c14nResult = canonicalize(DEMO_CAPSULE.transcript.messages);
+      const computedHash = computeHash(c14nResult.canonical_transcript);
+      const hashMatch = computedHash === DEMO_CAPSULE.transcript_hash_sha256;
+
+      const sigResult = verifySignature(
+        c14nResult.canonical_transcript,
+        DEMO_CAPSULE.signature.value,
+        DEMO_CAPSULE.signature.public_key_id
+      );
+
+      const capsuleCore = buildCapsuleCore(DEMO_CAPSULE);
+      const receiptHashSha256 = computeReceiptHash(capsuleCore);
+
+      let verificationStatus: "VERIFIED" | "PARTIALLY_VERIFIED" | "UNVERIFIED";
+      if (!hashMatch) {
+        verificationStatus = "UNVERIFIED";
+      } else if (sigResult.status === "VALID") {
+        verificationStatus = "VERIFIED";
+      } else if (sigResult.status === "INVALID") {
+        verificationStatus = "UNVERIFIED";
+      } else {
+        verificationStatus = "PARTIALLY_VERIFIED";
+      }
+
+      const internalId = randomUUID();
+      const verifiedAt = new Date().toISOString();
+      const forensics = computeForensics(DEMO_CAPSULE.transcript.messages, hashMatch, verificationStatus);
+
+      await storage.createReceipt({
+        id: internalId,
+        receiptId: DEMO_RECEIPT_ID,
+        platform: DEMO_CAPSULE.platform,
+        capturedAt: DEMO_CAPSULE.captured_at,
+        rawJson: JSON.stringify(DEMO_CAPSULE),
+        forensicsJson: JSON.stringify(forensics),
+        expectedHashSha256: DEMO_CAPSULE.transcript_hash_sha256,
+        computedHashSha256: computedHash,
+        hashMatch: hashMatch ? 1 : 0,
+        signatureStatus: sigResult.status,
+        signatureReason: sigResult.reason || null,
+        signatureIssuerId: sigResult.issuer_id || null,
+        signatureIssuerLabel: sigResult.issuer_label || null,
+        signatureKeyStatus: sigResult.key_status || null,
+        chainStatus: "GENESIS",
+        previousReceiptId: null,
+        receiptHashSha256,
+        verificationStatus,
+        verifiedAt,
+        verificationEngineId: ENGINE_ID,
+        immutableLock: verificationStatus !== "UNVERIFIED" ? 1 : 0,
+        hindsightKillSwitch: 0,
+        createdAt: verifiedAt,
+      });
+
+      await logAudit("demo_seed", { receiptId: DEMO_RECEIPT_ID, payload: { action: "demo_seed" } });
+
+      res.json({ status: "seeded", receipt_id: DEMO_RECEIPT_ID, verification_status: verificationStatus });
+    } catch (error) {
+      console.error("Demo seed error:", error);
+      apiError(res, 500, "Failed to seed demo receipt");
+    }
+  });
+
+  app.get("/api/demo/receipt-id", (_req, res) => {
+    res.json({ receipt_id: DEMO_RECEIPT_ID });
   });
 
   // P4: /api/verify requires auth (private ingest) + rate limited + input hardened
@@ -713,12 +961,22 @@ export async function registerRoutes(
       }
 
       if ((piiCount > 0 || killCount > 0) && !confirm) {
+        await logAudit("EXPORT_CONFIRM_REQUIRED", {
+          payload: { scope, filters, riskCounts: { pii: piiCount, killSwitch: killCount }, total: preview.total },
+          req,
+        });
         return res.status(409).json({
           code: "CONFIRM_REQUIRED",
           message: "Export contains receipts with sensitive flags. Re-submit with confirm:true to proceed.",
           riskCounts: { piiCount, killCount },
           totalMatching: preview.total,
         });
+      }
+
+      if (confirm) {
+        await logAudit("EXPORT_CONFIRMED", { payload: { scope, filters }, req });
+      } else {
+        await logAudit("EXPORT_REQUESTED", { payload: { scope, filters, total: preview.total }, req });
       }
 
       const exportId = `exp-${randomUUID()}`;
@@ -735,6 +993,8 @@ export async function registerRoutes(
         expiresAt: expiresAt.toISOString(),
       });
 
+      await logAudit("EXPORT_QUEUED", { exportId, payload: { scope, filters }, req });
+
       generateBulkExport(exportId, scope, filters, requestedAt, expiresAt.toISOString(), page, pageSize).catch(err => {
         console.error("Bulk export background error:", err);
       });
@@ -749,7 +1009,7 @@ export async function registerRoutes(
   // Bulk Export: get job status
   app.get("/api/exports/:exportId", requireAuth, async (req, res) => {
     try {
-      const job = await storage.getExportJob(req.params.exportId);
+      const job = await storage.getExportJob(req.params.exportId as string);
       if (!job) {
         return res.status(404).json({ error: "Export not found" });
       }
@@ -772,7 +1032,7 @@ export async function registerRoutes(
   // Bulk Export: download ZIP
   app.get("/api/exports/:exportId/download", requireAuth, async (req, res) => {
     try {
-      const job = await storage.getExportJob(req.params.exportId);
+      const job = await storage.getExportJob(req.params.exportId as string);
       if (!job) {
         return res.status(404).json({ error: "Export not found" });
       }
@@ -786,6 +1046,8 @@ export async function registerRoutes(
       if (!exists) {
         return res.status(410).json({ error: "Export file expired or missing" });
       }
+
+      await logAudit("EXPORT_DOWNLOADED", { exportId: job.exportId, req });
 
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="receipts-export-${job.exportId}.zip"`);
@@ -802,12 +1064,12 @@ export async function registerRoutes(
   app.get("/api/receipts/:receiptId", requireAuth, async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const receipt = await storage.getReceipt(receiptId);
+      const receipt = await storage.getReceipt(receiptId as string);
       if (!receipt) {
         return res.status(404).json({ error: "Receipt not found" });
       }
 
-      const interpretationsList = await storage.getInterpretations(receiptId);
+      const interpretationsList = await storage.getInterpretations(receiptId as string);
       
       let rawCapsule: any = {};
       try {
@@ -888,13 +1150,15 @@ export async function registerRoutes(
   app.get("/api/receipts/:receiptId/export", requireAuth, async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const receipt = await storage.getReceipt(receiptId);
+      const receipt = await storage.getReceipt(receiptId as string);
       
       if (!receipt) {
         return res.status(404).json({ error: "Receipt not found" });
       }
 
-      const interpretations = await storage.getInterpretations(receiptId);
+      await logAudit("RECEIPT_EXPORTED", { receiptId: receiptId as string, req });
+
+      const interpretations = await storage.getInterpretations(receiptId as string);
       
       let rawCapsule: any = null;
       try {
@@ -994,7 +1258,7 @@ export async function registerRoutes(
   app.post("/api/receipts/:receiptId/interpret", requireAuth, async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const receipt = await storage.getReceipt(receiptId);
+      const receipt = await storage.getReceipt(receiptId as string);
       
       if (!receipt) {
         return res.status(404).json({ error: "Receipt not found" });
@@ -1024,7 +1288,7 @@ export async function registerRoutes(
 
       const interpretation = await storage.createInterpretation({
         id: randomUUID(),
-        receiptId: receiptId,
+        receiptId: receiptId as string,
         modelId: model_id,
         kind,
         content,
@@ -1044,7 +1308,7 @@ export async function registerRoutes(
   app.post("/api/receipts/:receiptId/tri-sensor", requireAuth, async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const receipt = await storage.getReceipt(receiptId);
+      const receipt = await storage.getReceipt(receiptId as string);
       
       if (!receipt) {
         return res.status(404).json({ error: "Receipt not found" });
@@ -1076,7 +1340,7 @@ export async function registerRoutes(
 
       const interpretation = await storage.createInterpretation({
         id: randomUUID(),
-        receiptId: receiptId,
+        receiptId: receiptId as string,
         modelId: "tri-sensor:stub",
         kind: "tri_sensor",
         content: JSON.stringify(triSensorResult),
@@ -1105,7 +1369,7 @@ export async function registerRoutes(
   app.post("/api/receipts/:receiptId/observe", requireAuth, async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const receipt = await storage.getReceipt(receiptId);
+      const receipt = await storage.getReceipt(receiptId as string);
       
       if (!receipt) {
         return res.status(404).json({ error: "Receipt not found" });
@@ -1114,7 +1378,7 @@ export async function registerRoutes(
       // Kill switch blocks LLM observations too
       if (receipt.hindsightKillSwitch === 1) {
         // P7.5: Log kill switch engagement block
-        logKillSwitch(receiptId);
+        logKillSwitch(receiptId as string);
         return res.status(403).json({ error: "Kill switch engaged - observations disabled" });
       }
 
@@ -1141,7 +1405,7 @@ export async function registerRoutes(
       const injectionMatches = detectPromptInjection(transcriptText);
       if (injectionMatches.length > 0) {
         // Log for audit purposes only - do NOT block
-        logPromptInjectionFlag(receiptId, injectionMatches[0], observation_type);
+        logPromptInjectionFlag(receiptId as string, injectionMatches[0], observation_type);
       }
 
       // Use sensor pipeline for proper adapter dispatch
@@ -1153,7 +1417,7 @@ export async function registerRoutes(
         : "submitted_transcript" as const;
       
       const result = await runSensorPipeline({
-        receiptId,
+        receiptId: receiptId as string,
         transcript: { messages: transcript },
         basis,
         observationType: observation_type,
@@ -1173,7 +1437,7 @@ export async function registerRoutes(
       // Store observation (separate from interpretations)
       await storage.createLlmObservation({
         observationId: observation.observation_id,
-        receiptId: receiptId,
+        receiptId: receiptId as string,
         modelId: observation.model_id,
         observationType: observation.observation_type,
         basedOn: observation.based_on,
@@ -1203,13 +1467,13 @@ export async function registerRoutes(
   app.get("/api/receipts/:receiptId/observations", requireAuth, async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const receipt = await storage.getReceipt(receiptId);
+      const receipt = await storage.getReceipt(receiptId as string);
       
       if (!receipt) {
         return res.status(404).json({ error: "Receipt not found" });
       }
 
-      const observations = await storage.getLlmObservations(receiptId);
+      const observations = await storage.getLlmObservations(receiptId as string);
 
       // Kill switch: hide observations
       if (receipt.hindsightKillSwitch === 1) {
@@ -1255,7 +1519,7 @@ export async function registerRoutes(
   app.post("/api/receipts/:receiptId/observe/multi", requireAuth, async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const receipt = await storage.getReceipt(receiptId);
+      const receipt = await storage.getReceipt(receiptId as string);
       
       if (!receipt) {
         return res.status(404).json({ error: "Receipt not found" });
@@ -1263,7 +1527,7 @@ export async function registerRoutes(
 
       if (receipt.hindsightKillSwitch === 1) {
         // P7.5: Log kill switch block
-        logKillSwitch(receiptId);
+        logKillSwitch(receiptId as string);
         return res.status(403).json({ error: "Kill switch engaged - observations disabled" });
       }
 
@@ -1290,7 +1554,7 @@ export async function registerRoutes(
       const injectionMatches = detectPromptInjection(transcriptText);
       if (injectionMatches.length > 0) {
         // Log for audit purposes only - do NOT block
-        logPromptInjectionFlag(receiptId, injectionMatches[0], observation_type);
+        logPromptInjectionFlag(receiptId as string, injectionMatches[0], observation_type);
       }
 
       // Use sensor pipeline for proper adapter dispatch
@@ -1303,7 +1567,7 @@ export async function registerRoutes(
       const normalizedModelIds = model_ids.map(id => normalizeModelId(id));
       
       const multiResult = await runMultiModelPipeline({
-        receiptId,
+        receiptId: receiptId as string,
         transcript: { messages: transcript },
         basis,
         observationType: observation_type,
@@ -1314,7 +1578,7 @@ export async function registerRoutes(
       if (multiResult.kill_switch_engaged) {
         return res.status(403).json({
           schema: "llm-multi-observation/1.0",
-          receipt_id: receiptId,
+          receipt_id: receiptId as string,
           observation_type,
           kill_switch_engaged: true,
           model_results: multiResult.model_results,
@@ -1328,7 +1592,7 @@ export async function registerRoutes(
       for (const observation of multiResult.observations) {
         await storage.createLlmObservation({
           observationId: observation.observation_id,
-          receiptId: receiptId,
+          receiptId: receiptId as string,
           modelId: observation.model_id,
           observationType: observation.observation_type,
           basedOn: observation.based_on,
@@ -1366,7 +1630,7 @@ export async function registerRoutes(
 
       res.json({
         schema: "llm-multi-observation/1.0",
-        receipt_id: receiptId,
+        receipt_id: receiptId as string,
         observation_type,
         kill_switch_engaged: false,
         // Per-model results with "said" phrasing (non-authoritative)
@@ -1397,7 +1661,7 @@ export async function registerRoutes(
   app.get("/api/public/receipts/:receiptId/verify", rateLimitPublic, async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const receipt = await storage.getReceipt(receiptId);
+      const receipt = await storage.getReceipt(receiptId as string);
       
       if (!receipt) {
         const errorResponse = createPublicError(
@@ -1558,7 +1822,7 @@ export async function registerRoutes(
   app.get("/api/public/receipts/:receiptId/proof", rateLimitPublic, async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const receipt = await storage.getReceipt(receiptId);
+      const receipt = await storage.getReceipt(receiptId as string);
       
       if (!receipt) {
         const errorResponse = createPublicError(
@@ -1569,68 +1833,36 @@ export async function registerRoutes(
         return res.status(404).json(errorResponse);
       }
 
-      // Parse rawJson to get signature details (algorithm, public_key_id, previous_hash)
-      let rawCapsule: any = {};
-      try {
-        rawCapsule = JSON.parse(receipt.rawJson);
-      } catch {}
-
-      // Build proof pack - integrity proofs only, no transcript
-      const proofPack = {
-        schema: "ai-receipt/proof-pack/1.0" as const,
-        receipt_id: receipt.receiptId,
-        platform: receipt.platform,
-        captured_at: receipt.capturedAt,
-        verified_at: receipt.verifiedAt,
-        verification_status: receipt.verificationStatus as "VERIFIED" | "PARTIALLY_VERIFIED" | "UNVERIFIED",
-        kill_switch_engaged: receipt.hindsightKillSwitch === 1,
-        
-        integrity: {
-          hash_match: receipt.hashMatch === 1,
-          computed_hash_sha256: receipt.computedHashSha256,
-          expected_hash_sha256: receipt.expectedHashSha256,
-          receipt_hash_sha256: receipt.receiptHashSha256 || "",
-          canonicalization: "c14n-v1" as const,
-        },
-        
-        signature: {
-          status: (receipt.signatureStatus || "NO_SIGNATURE") as "VALID" | "INVALID" | "UNTRUSTED_ISSUER" | "NO_SIGNATURE",
-          algorithm: rawCapsule.signature?.alg || null,
-          public_key_id: rawCapsule.signature?.public_key_id || null,
-          issuer_id: receipt.signatureIssuerId || null,
-          issuer_label: receipt.signatureIssuerLabel || null,
-          key_governance: {
-            key_status: (receipt.signatureKeyStatus as "ACTIVE" | "REVOKED" | "EXPIRED" | null) || null,
-            valid_from: null,
-            valid_to: null,
-            revoked_reason: null,
-          },
-        },
-        
-        chain: {
-          status: (receipt.chainStatus || "NOT_CHECKED") as "GENESIS" | "LINKED" | "BROKEN" | "NOT_CHECKED",
-          previous_receipt_id: receipt.previousReceiptId || null,
-          previous_receipt_hash: rawCapsule.previous_receipt_hash_sha256 || null,
-          is_genesis: !receipt.previousReceiptId && receipt.chainStatus === "GENESIS",
-          link_verified: receipt.chainStatus === "LINKED" || receipt.chainStatus === "GENESIS",
-        },
-        
-        // P7.3: Proof scope declaration - prevents "proof implies truth" misuse
-        proof_scope: ["integrity", "signature", "chain"] as const,
-        proof_scope_excludes: ["truth", "completeness", "authorship_intent"] as const,
-        
-        _contract: {
-          proof_pack_version: "1.0" as const,
-          transcript_included: false as const,
-          observations_included: false as const,
-          research_data_included: false as const,
-          integrity_proofs_only: true as const,
-        },
-      };
-
+      const proofPack = await buildProofPack(receipt);
       res.json(proofPack);
     } catch (error) {
       console.error("Proof pack error:", error);
+      const errorResponse = createPublicError(
+        PUBLIC_ERROR_CODES.INTERNAL_ERROR,
+        "Internal server error"
+      );
+      res.status(500).json(errorResponse);
+    }
+  });
+
+  app.get("/api/proofpack/:receiptId", rateLimitPublic, async (req, res) => {
+    try {
+      const { receiptId } = req.params;
+      const receipt = await storage.getReceipt(receiptId as string);
+      
+      if (!receipt) {
+        const errorResponse = createPublicError(
+          PUBLIC_ERROR_CODES.RECEIPT_NOT_FOUND,
+          "Receipt not found",
+          { receipt_id: receiptId }
+        );
+        return res.status(404).json(errorResponse);
+      }
+
+      const proofPack = await buildProofPack(receipt);
+      res.json(proofPack);
+    } catch (error) {
+      console.error("ProofPack error:", error);
       const errorResponse = createPublicError(
         PUBLIC_ERROR_CODES.INTERNAL_ERROR,
         "Internal server error"
@@ -1765,6 +1997,437 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Research export error:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ── Saved Views ──
+
+  app.get("/api/saved-views", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const views = await storage.listSavedViews();
+      res.json({ items: views.map(v => ({ ...v, filters: JSON.parse(v.filtersJson) })) });
+    } catch (error) {
+      console.error("List saved views error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/saved-views", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const parsed = createSavedViewSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: fromError(parsed.error).message });
+        return;
+      }
+
+      const { name, description, filters } = parsed.data;
+
+      const normalizedFilters = {
+        ...filters,
+        q: filters.q?.trim() || null,
+      };
+
+      const existing = await storage.getSavedViewByName(name);
+      if (existing) {
+        res.status(409).json({ error: "NAME_EXISTS" });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const viewId = randomUUID();
+      const view = await storage.createSavedView({
+        id: viewId,
+        name,
+        description: description ?? null,
+        filtersJson: JSON.stringify(normalizedFilters),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await logAudit("SAVED_VIEW_CREATED", { savedViewId: viewId, payload: { name, filters: normalizedFilters }, req });
+
+      res.status(201).json({ ...view, filters: JSON.parse(view.filtersJson) });
+    } catch (error) {
+      console.error("Create saved view error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/saved-views/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const parsed = updateSavedViewSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: fromError(parsed.error).message });
+        return;
+      }
+
+      const existing = await storage.getSavedView(id as string);
+      if (!existing) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+
+      const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+
+      if (parsed.data.name !== undefined) {
+        const dup = await storage.getSavedViewByName(parsed.data.name);
+        if (dup && dup.id !== id) {
+          res.status(409).json({ error: "NAME_EXISTS" });
+          return;
+        }
+        updates.name = parsed.data.name;
+      }
+
+      if (parsed.data.description !== undefined) {
+        updates.description = parsed.data.description;
+      }
+
+      if (parsed.data.filters !== undefined) {
+        const normalizedFilters = {
+          ...parsed.data.filters,
+          q: parsed.data.filters.q?.trim() || null,
+        };
+        updates.filtersJson = JSON.stringify(normalizedFilters);
+      }
+
+      const updated = await storage.updateSavedView(id as string, updates as any);
+      if (!updated) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+
+      res.json({ ...updated, filters: JSON.parse(updated.filtersJson) });
+    } catch (error) {
+      console.error("Update saved view error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/saved-views/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const existing = await storage.getSavedView(id as string);
+      const deleted = await storage.deleteSavedView(id as string);
+      if (!deleted) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      await logAudit("SAVED_VIEW_DELETED", { savedViewId: id as string, payload: { name: existing?.name }, req });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete saved view error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ==========================================================================
+  // AUDIT TRAIL ENDPOINTS
+  // ==========================================================================
+
+  app.get("/api/audit", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const page = Math.max(1, Math.min(1000, parseInt(req.query.page as string) || 1));
+      const rawSize = parseInt(req.query.pageSize as string) || 50;
+      const pageSize = [50, 100, 200].includes(rawSize) ? rawSize : 50;
+      const action = (req.query.action as string) || undefined;
+      const receiptId = (req.query.receiptId as string) || undefined;
+      const exportId = (req.query.exportId as string) || undefined;
+      const savedViewId = (req.query.savedViewId as string) || undefined;
+
+      const result = await storage.getAuditEventsPaged({ page, pageSize, action, receiptId, exportId, savedViewId });
+      res.json(result);
+    } catch (error) {
+      console.error("Audit list error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/saved-views/:id/apply", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const view = await storage.getSavedView(id as string);
+      if (!view) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      await logAudit("SAVED_VIEW_APPLIED", {
+        savedViewId: id as string,
+        payload: { name: view.name, filters: JSON.parse(view.filtersJson) },
+        req,
+      });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Apply saved view error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/audit/verify", requireAuth, rateLimitVerify, async (req: Request, res: Response) => {
+    const start = Date.now();
+    try {
+      const limit = Math.max(1, Math.min(50000, parseInt(req.query.limit as string) || 5000));
+      const strict = req.query.strict === "true";
+      const fromSeq = req.query.fromSeq ? Math.max(1, parseInt(req.query.fromSeq as string) || 1) : undefined;
+      const toSeq = req.query.toSeq ? Math.max(1, parseInt(req.query.toSeq as string) || Infinity) : undefined;
+      const result = await storage.verifyAuditChain(limit, strict, fromSeq, toSeq);
+      const ms = Date.now() - start;
+      logAuditVerifyResult(result.status, result.checked, result.totalEvents);
+      logVerifyLatency(ms, result.ok, result.partial, result.checkedEvents, result.totalEvents, result.firstBadSeq);
+      res.json(result);
+    } catch (error) {
+      console.error("Audit verify error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/compare/viewed", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { left, right } = req.body ?? {};
+      if (!left || !right || typeof left !== "string" || typeof right !== "string" || left.length > 256 || right.length > 256) {
+        res.status(400).json({ error: "Both left and right receipt IDs required (max 256 chars)" });
+        return;
+      }
+      await logAudit("COMPARE_VIEWED", { payload: { left, right }, req });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Compare viewed error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/audit/checkpoints", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 20));
+      const checkpoints = await storage.getCheckpoints(limit);
+      res.json({
+        checkpoints: checkpoints.map(cp => ({
+          id: cp.id,
+          seq: cp.seq,
+          hash: cp.hash,
+          ts: cp.ts,
+          prevCheckpointId: cp.prevCheckpointId,
+          signatureAlg: cp.signatureAlg,
+          publicKeyId: cp.publicKeyId,
+          signature: cp.signature,
+          eventCount: cp.eventCount,
+        })),
+        count: checkpoints.length,
+      });
+    } catch (error) {
+      console.error("Checkpoints list error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/audit/checkpoints/verify", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { verifyCheckpointSignature, getPublicKeyPem } = await import("./checkpoint-signer");
+      const checkpoints = await storage.getCheckpoints(1000);
+      if (checkpoints.length === 0) {
+        res.json({
+          ok: true,
+          status: "EMPTY",
+          checked: 0,
+          message: "No checkpoints to verify",
+        });
+        return;
+      }
+
+      const sorted = [...checkpoints].sort((a, b) => a.seq - b.seq);
+      const publicKeyPem = getPublicKeyPem();
+      let checked = 0;
+
+      for (const cp of sorted) {
+        const sigValid = verifyCheckpointSignature(
+          cp.signedPayload,
+          cp.signature,
+          publicKeyPem,
+        );
+
+        if (!sigValid) {
+          res.json({
+            ok: false,
+            status: "SIGNATURE_INVALID",
+            checked,
+            failedCheckpointId: cp.id,
+            failedSeq: cp.seq,
+            message: `Checkpoint signature verification failed at seq ${cp.seq}`,
+          });
+          return;
+        }
+        checked++;
+      }
+
+      res.json({
+        ok: true,
+        status: "VERIFIED",
+        checked,
+        latestCheckpointSeq: sorted[sorted.length - 1].seq,
+        publicKeyId: sorted[0].publicKeyId,
+        message: `All ${checked} checkpoint signatures verified`,
+      });
+    } catch (error) {
+      console.error("Checkpoint verify error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/audit/checkpoints/public-key", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getPublicKeyPem, getOrCreateCheckpointKey } = await import("./checkpoint-signer");
+      const keyInfo = getOrCreateCheckpointKey();
+      res.json({
+        publicKeyId: keyInfo.publicKeyId,
+        publicKeyPem: keyInfo.publicKeyPem,
+        algorithm: "Ed25519",
+      });
+    } catch (error) {
+      console.error("Public key error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ==========================================================================
+  // PROOF SPINE: LANTERN FOLLOWUP (proof-gated)
+  // ==========================================================================
+
+  app.post("/api/lantern/followup", rateLimitPublic, inputHardening, async (req, res) => {
+    try {
+      const parseResult = lanternFollowupSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        const validationError = fromError(parseResult.error);
+        return apiError(res, 400, "Invalid request", validationError.message);
+      }
+
+      const { receiptId, userText } = parseResult.data;
+      let { threadId } = parseResult.data;
+
+      const receipt = await storage.getReceipt(receiptId);
+      if (!receipt) {
+        return apiError(res, 404, "Receipt not found");
+      }
+
+      const proofPack = await buildProofPack(receipt);
+
+      if (proofPack.verification_status !== "VERIFIED") {
+        return res.status(403).json({
+          status: "blocked",
+          reason: "Proof not VERIFIED",
+          verification_status: proofPack.verification_status,
+          integrity: proofPack.integrity,
+          signature: { status: proofPack.signature.status },
+          chain: { status: proofPack.chain.status },
+        });
+      }
+
+      if (proofPack.kill_switch_engaged) {
+        return res.status(403).json({
+          status: "blocked",
+          reason: "Kill switch engaged on this receipt",
+        });
+      }
+
+      let thread = threadId ? await storage.getThread(threadId) : undefined;
+      if (!thread) {
+        threadId = randomUUID();
+        thread = await storage.createThread({
+          threadId,
+          receiptId,
+          proofpackJson: JSON.stringify(proofPack),
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      const userMessageId = randomUUID();
+      await storage.createThreadMessage({
+        id: userMessageId,
+        threadId: thread.threadId,
+        role: "user",
+        content: userText,
+        createdAt: new Date().toISOString(),
+      });
+
+      const assistantContent = `[Lantern stub] Receipt ${receiptId} is VERIFIED. Your question has been recorded. LLM integration pending.`;
+      const assistantMessageId = randomUUID();
+      await storage.createThreadMessage({
+        id: assistantMessageId,
+        threadId: thread.threadId,
+        role: "assistant",
+        content: assistantContent,
+        createdAt: new Date().toISOString(),
+      });
+
+      await logAudit("lantern.followup", {
+        receiptId,
+        payload: { threadId: thread.threadId, messageCount: 2 },
+        req,
+      });
+
+      const messages = await storage.getThreadMessages(thread.threadId);
+
+      res.json({
+        status: "ok",
+        threadId: thread.threadId,
+        receiptId,
+        verification_status: proofPack.verification_status,
+        messages: messages.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+        })),
+      });
+    } catch (error) {
+      console.error("Lantern followup error:", error);
+      apiError(res, 500, "Internal server error");
+    }
+  });
+
+  app.get("/api/lantern/threads/:receiptId", rateLimitPublic, async (req, res) => {
+    try {
+      const receiptId = req.params.receiptId as string;
+      const threadList = await storage.getThreadsByReceipt(receiptId);
+      res.json({
+        threads: threadList.map(t => ({
+          threadId: t.threadId,
+          receiptId: t.receiptId,
+          createdAt: t.createdAt,
+        })),
+      });
+    } catch (error) {
+      console.error("Lantern threads error:", error);
+      apiError(res, 500, "Internal server error");
+    }
+  });
+
+  app.get("/api/lantern/thread/:threadId/messages", rateLimitPublic, async (req, res) => {
+    try {
+      const threadId = req.params.threadId as string;
+      const thread = await storage.getThread(threadId);
+      if (!thread) {
+        return apiError(res, 404, "Thread not found");
+      }
+      const messages = await storage.getThreadMessages(threadId);
+      res.json({
+        threadId,
+        receiptId: thread.receiptId,
+        messages: messages.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+        })),
+      });
+    } catch (error) {
+      console.error("Lantern messages error:", error);
+      apiError(res, 500, "Internal server error");
+    }
+  });
+
+  app.use("/api", (req, res, next) => {
+    if (!res.headersSent) {
+      apiError(res, 404, "Not found", `No route matches ${req.method} ${req.originalUrl}`);
     }
   });
 

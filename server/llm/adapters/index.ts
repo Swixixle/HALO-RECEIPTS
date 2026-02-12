@@ -28,8 +28,8 @@ import { QwenAdapter } from "./qwen";
 // Factory functions for adapters - mock adapter receives modelId for divergent output support
 type AdapterFactory = (modelId?: string) => LlmSensorAdapter;
 
-const adapterRegistry: Map<ProviderName, AdapterFactory> = new Map([
-  ["mock", (modelId) => new MockAdapter(modelId)],
+const adapterRegistryEntries: Array<[ProviderName, AdapterFactory]> = [
+  ["mock", (modelId?: string) => new MockAdapter(modelId)],
   ["openai", () => new OpenAIAdapter()],
   ["anthropic", () => new AnthropicAdapter()],
   ["google", () => new GoogleAdapter()],
@@ -40,7 +40,9 @@ const adapterRegistry: Map<ProviderName, AdapterFactory> = new Map([
   ["perplexity", () => new PerplexityAdapter()],
   ["deepseek", () => new DeepseekAdapter()],
   ["qwen", () => new QwenAdapter()],
-]);
+];
+
+const adapterRegistry: Map<ProviderName, AdapterFactory> = new Map(adapterRegistryEntries);
 
 export function validateModelId(modelId: string): { provider: ProviderName; model: string } {
   if (!MODEL_ID_REGEX.test(modelId)) {
