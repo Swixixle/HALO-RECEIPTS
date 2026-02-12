@@ -25,4 +25,4 @@ jobs:
 
       - name: Run TypeScript E2E suite
         run: |
-          npx ts-node --esm scripts/verify-public-mode.test.ts
+          npx tsx scripts/verify-public-mode.test.ts
