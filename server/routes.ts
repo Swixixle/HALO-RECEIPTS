@@ -749,7 +749,7 @@ export async function registerRoutes(
   // Bulk Export: get job status
   app.get("/api/exports/:exportId", requireAuth, async (req, res) => {
     try {
-      const job = await storage.getExportJob(req.params.exportId);
+      const job = await storage.getExportJob(req.params.exportId as string);
       if (!job) {
         return res.status(404).json({ error: "Export not found" });
       }
@@ -772,7 +772,7 @@ export async function registerRoutes(
   // Bulk Export: download ZIP
   app.get("/api/exports/:exportId/download", requireAuth, async (req, res) => {
     try {
-      const job = await storage.getExportJob(req.params.exportId);
+      const job = await storage.getExportJob(req.params.exportId as string);
       if (!job) {
         return res.status(404).json({ error: "Export not found" });
       }
@@ -801,7 +801,7 @@ export async function registerRoutes(
   // P4: Private endpoint - requires auth
   app.get("/api/receipts/:receiptId", requireAuth, async (req, res) => {
     try {
-      const { receiptId } = req.params;
+      const receiptId = req.params.receiptId as string;
       const receipt = await storage.getReceipt(receiptId);
       if (!receipt) {
         return res.status(404).json({ error: "Receipt not found" });
@@ -887,7 +887,7 @@ export async function registerRoutes(
   // P4: Private endpoint - requires auth
   app.get("/api/receipts/:receiptId/export", requireAuth, async (req, res) => {
     try {
-      const { receiptId } = req.params;
+      const receiptId = req.params.receiptId as string;
       const receipt = await storage.getReceipt(receiptId);
       
       if (!receipt) {
@@ -993,7 +993,7 @@ export async function registerRoutes(
   // P4: Private endpoint - requires auth
   app.post("/api/receipts/:receiptId/interpret", requireAuth, async (req, res) => {
     try {
-      const { receiptId } = req.params;
+      const receiptId = req.params.receiptId as string;
       const receipt = await storage.getReceipt(receiptId);
       
       if (!receipt) {
@@ -1043,7 +1043,7 @@ export async function registerRoutes(
   // P4: Private endpoint - requires auth
   app.post("/api/receipts/:receiptId/tri-sensor", requireAuth, async (req, res) => {
     try {
-      const { receiptId } = req.params;
+      const receiptId = req.params.receiptId as string;
       const receipt = await storage.getReceipt(receiptId);
       
       if (!receipt) {
@@ -1104,7 +1104,7 @@ export async function registerRoutes(
    */
   app.post("/api/receipts/:receiptId/observe", requireAuth, async (req, res) => {
     try {
-      const { receiptId } = req.params;
+      const receiptId = req.params.receiptId as string;
       const receipt = await storage.getReceipt(receiptId);
       
       if (!receipt) {
@@ -1202,7 +1202,7 @@ export async function registerRoutes(
    */
   app.get("/api/receipts/:receiptId/observations", requireAuth, async (req, res) => {
     try {
-      const { receiptId } = req.params;
+      const receiptId = req.params.receiptId as string;
       const receipt = await storage.getReceipt(receiptId);
       
       if (!receipt) {
@@ -1254,7 +1254,7 @@ export async function registerRoutes(
    */
   app.post("/api/receipts/:receiptId/observe/multi", requireAuth, async (req, res) => {
     try {
-      const { receiptId } = req.params;
+      const receiptId = req.params.receiptId as string;
       const receipt = await storage.getReceipt(receiptId);
       
       if (!receipt) {
@@ -1396,7 +1396,7 @@ export async function registerRoutes(
   // P6.6: Hardened with deterministic response envelope and contract metadata
   app.get("/api/public/receipts/:receiptId/verify", rateLimitPublic, async (req, res) => {
     try {
-      const { receiptId } = req.params;
+      const receiptId = req.params.receiptId as string;
       const receipt = await storage.getReceipt(receiptId);
       
       if (!receipt) {
@@ -1557,7 +1557,7 @@ export async function registerRoutes(
    */
   app.get("/api/public/receipts/:receiptId/proof", rateLimitPublic, async (req, res) => {
     try {
-      const { receiptId } = req.params;
+      const receiptId = req.params.receiptId as string;
       const receipt = await storage.getReceipt(receiptId);
       
       if (!receipt) {

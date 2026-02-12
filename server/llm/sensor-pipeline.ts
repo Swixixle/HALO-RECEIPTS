@@ -240,7 +240,7 @@ function enforcePolicy(
   
   if (violations.length > 0) {
     // P7.5: Log forbidden words security event
-    logForbiddenWords(adapterOutput.observation_type, violations.length);
+    logForbiddenWords(adapterOutput.observations, violations.length);
     
     throw new SensorPipelineError(
       `LLM output rejected due to forbidden language: ${violations.join(", ")}. Sensor-mode requires neutral, observational language only.`,
