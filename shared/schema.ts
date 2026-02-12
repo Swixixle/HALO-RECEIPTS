@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, jsonb, uniqueIndex, index, bigint } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -95,6 +95,32 @@ export const llmObservations = pgTable("llm_observations", {
   createdAt: text("created_at").notNull(),
 });
 
+// Proof Spine: Threads (durable conversation continuity)
+export const threads = pgTable("threads", {
+  threadId: text("thread_id").primaryKey(),
+  receiptId: text("receipt_id").notNull(),
+  proofpackJson: text("proofpack_json").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("idx_threads_receipt_id").on(table.receiptId),
+]);
+
+export type Thread = typeof threads.$inferSelect;
+export type InsertThread = typeof threads.$inferInsert;
+
+export const threadMessages = pgTable("thread_messages", {
+  id: text("id").primaryKey(),
+  threadId: text("thread_id").notNull(),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("idx_thread_messages_thread_id").on(table.threadId),
+]);
+
+export type ThreadMessage = typeof threadMessages.$inferSelect;
+export type InsertThreadMessage = typeof threadMessages.$inferInsert;
+
 // Bulk Export Jobs
 export const exportJobs = pgTable("export_jobs", {
   exportId: text("export_id").primaryKey(),
@@ -111,6 +137,98 @@ export const exportJobs = pgTable("export_jobs", {
 
 export type ExportJob = typeof exportJobs.$inferSelect;
 export type InsertExportJob = typeof exportJobs.$inferInsert;
+
+export const savedViews = pgTable("saved_views", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  filtersJson: text("filters_json").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export type SavedView = typeof savedViews.$inferSelect;
+export type InsertSavedView = typeof savedViews.$inferInsert;
+
+export const auditEvents = pgTable("audit_events", {
+  id: text("id").primaryKey(),
+  seq: bigint("seq", { mode: "number" }).notNull().unique(),
+  ts: text("ts").notNull(),
+  action: text("action").notNull(),
+  actor: text("actor").notNull(),
+  receiptId: text("receipt_id"),
+  exportId: text("export_id"),
+  savedViewId: text("saved_view_id"),
+  payload: text("payload").notNull(),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  prevHash: text("prev_hash").notNull(),
+  hash: text("hash").notNull().unique(),
+  schemaVersion: text("schema_version").notNull().default("audit/1.1"),
+  payloadV: integer("payload_v").notNull().default(1),
+}, (table) => [
+  index("idx_audit_ts").on(table.ts),
+  index("idx_audit_action").on(table.action),
+  index("idx_audit_receipt_id").on(table.receiptId),
+  index("idx_audit_export_id").on(table.exportId),
+  index("idx_audit_saved_view_id").on(table.savedViewId),
+  index("idx_audit_seq_desc").on(table.seq),
+  index("idx_audit_payload_v").on(table.payloadV),
+]);
+
+export type AuditEvent = typeof auditEvents.$inferSelect;
+export type InsertAuditEvent = typeof auditEvents.$inferInsert;
+
+export const auditHead = pgTable("audit_head", {
+  id: integer("id").primaryKey(),
+  lastSeq: bigint("last_seq", { mode: "number" }).notNull().default(0),
+  lastHash: text("last_hash").notNull().default("GENESIS"),
+});
+
+export type AuditHead = typeof auditHead.$inferSelect;
+
+export const auditCheckpoints = pgTable("audit_checkpoints", {
+  id: text("id").primaryKey(),
+  seq: bigint("seq", { mode: "number" }).notNull(),
+  hash: text("hash").notNull(),
+  ts: text("ts").notNull(),
+  prevCheckpointId: text("prev_checkpoint_id"),
+  prevCheckpointHash: text("prev_checkpoint_hash"),
+  signatureAlg: text("signature_alg").notNull().default("Ed25519"),
+  publicKeyId: text("public_key_id").notNull(),
+  signature: text("signature").notNull(),
+  signedPayload: text("signed_payload").notNull(),
+  eventCount: integer("event_count").notNull(),
+}, (table) => [
+  index("idx_checkpoint_seq").on(table.seq),
+]);
+
+export type AuditCheckpoint = typeof auditCheckpoints.$inferSelect;
+export type InsertAuditCheckpoint = typeof auditCheckpoints.$inferInsert;
+
+export const savedViewFiltersSchema = z.object({
+  status: z.enum(["VERIFIED", "PARTIALLY_VERIFIED", "UNVERIFIED"]).nullable().optional(),
+  q: z.string().max(128).nullable().optional(),
+  hasForensics: z.boolean().nullable().optional(),
+  killSwitch: z.boolean().nullable().optional(),
+  pageSize: z.union([z.literal(50), z.literal(100), z.literal(200)]).optional(),
+}).strict();
+
+export const createSavedViewSchema = z.object({
+  name: z.string().min(1).max(64).transform(s => s.trim()),
+  description: z.string().max(200).transform(s => s.trim()).nullable().optional(),
+  filters: savedViewFiltersSchema,
+});
+
+export const updateSavedViewSchema = z.object({
+  name: z.string().min(1).max(64).transform(s => s.trim()).optional(),
+  description: z.string().max(200).transform(s => s.trim()).nullable().optional(),
+  filters: savedViewFiltersSchema.optional(),
+});
+
+export type CreateSavedViewInput = z.infer<typeof createSavedViewSchema>;
+export type UpdateSavedViewInput = z.infer<typeof updateSavedViewSchema>;
+export type SavedViewFilters = z.infer<typeof savedViewFiltersSchema>;
 
 // Bulk export request schema
 export const bulkExportRequestSchema = z.object({
@@ -345,6 +463,68 @@ export interface ForensicsResult {
     severity: "LOW" | "MEDIUM" | "HIGH";
     message: string;
   }>;
+}
+
+// Lantern followup request schema
+export const lanternFollowupSchema = z.object({
+  threadId: z.string().min(1).max(128).optional(),
+  receiptId: z.string().min(1).max(128),
+  userText: z.string().min(1).max(4096),
+});
+
+export type LanternFollowupRequest = z.infer<typeof lanternFollowupSchema>;
+
+// ProofPack response shape (canonical)
+export interface ProofPack {
+  schema: "ai-receipt/proof-pack/1.0";
+  receipt_id: string;
+  platform: string;
+  captured_at: string;
+  verified_at: string;
+  verification_status: "VERIFIED" | "PARTIALLY_VERIFIED" | "UNVERIFIED";
+  kill_switch_engaged: boolean;
+  integrity: {
+    hash_match: boolean;
+    computed_hash_sha256: string;
+    expected_hash_sha256: string;
+    receipt_hash_sha256: string;
+    canonicalization: "c14n-v1";
+  };
+  signature: {
+    status: "VALID" | "INVALID" | "UNTRUSTED_ISSUER" | "NO_SIGNATURE";
+    algorithm: string | null;
+    public_key_id: string | null;
+    issuer_id: string | null;
+    issuer_label: string | null;
+    key_governance: {
+      key_status: "ACTIVE" | "REVOKED" | "EXPIRED" | null;
+      valid_from: string | null;
+      valid_to: string | null;
+      revoked_reason: string | null;
+    };
+  };
+  chain: {
+    status: "GENESIS" | "LINKED" | "BROKEN" | "NOT_CHECKED";
+    previous_receipt_id: string | null;
+    previous_receipt_hash: string | null;
+    is_genesis: boolean;
+    link_verified: boolean;
+  };
+  audit: {
+    total_events: number;
+    head_hash: string | null;
+    head_seq: number | null;
+    status: "LINKED" | "EMPTY" | "DEGRADED";
+  };
+  proof_scope: readonly ["integrity", "signature", "chain"];
+  proof_scope_excludes: readonly ["truth", "completeness", "authorship_intent"];
+  _contract: {
+    proof_pack_version: "1.0";
+    transcript_included: false;
+    observations_included: false;
+    research_data_included: false;
+    integrity_proofs_only: true;
+  };
 }
 
 // Export report types

@@ -6,6 +6,6 @@ vite.config.ts.*
 *.tar.gz
 .env
 .env.*
-!.env.example
 .env.local
-.env.e2eout/
+.env.e2e
+/tmp/bulk-exports/

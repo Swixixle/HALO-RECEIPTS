@@ -229,7 +229,8 @@ function ensureMinimumLimitations(limitations: string[]): string[] {
  */
 function enforcePolicy(
   rawContent: string,
-  adapterOutput: AdapterObservation
+  adapterOutput: AdapterObservation,
+  observationType?: string
 ): { 
   content: string; 
   limitations: string[];
@@ -239,8 +240,7 @@ function enforcePolicy(
   const violations = validateLanguageHygiene(rawContent);
   
   if (violations.length > 0) {
-    // P7.5: Log forbidden words security event
-    logForbiddenWords(adapterOutput.observation_type, violations.length);
+    logForbiddenWords(observationType ?? "unknown", violations.length);
     
     throw new SensorPipelineError(
       `LLM output rejected due to forbidden language: ${violations.join(", ")}. Sensor-mode requires neutral, observational language only.`,
@@ -321,7 +321,7 @@ export async function runSensorPipeline(
     const adapterResponse = await adapter.execute(adapterRequest);
 
     // Step 8: Apply policy enforcement
-    const policy = enforcePolicy(adapterResponse.observations, adapterResponse);
+    const policy = enforcePolicy(adapterResponse.observations, adapterResponse, input.observationType);
 
     if (policy.hedgingAdded) {
       console.log("[Sensor-Pipeline] Added hedging prefix to output lacking hedge words");

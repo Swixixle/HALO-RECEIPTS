@@ -2,6 +2,7 @@ import archiver from "archiver";
 import { createWriteStream } from "fs";
 import { mkdir, unlink, stat } from "fs/promises";
 import path from "path";
+import { randomUUID } from "crypto";
 import type { Receipt } from "@shared/schema";
 import { storage } from "./storage";
 
@@ -278,12 +279,26 @@ export async function generateBulkExport(
       completed: allReceipts.length,
       filePath,
     });
+    try {
+      await storage.appendAuditEvent({
+        action: "EXPORT_READY",
+        actor: "operator", exportId,
+        payload: JSON.stringify({ total: allReceipts.length }),
+      });
+    } catch {}
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     await storage.updateExportJob(exportId, {
       status: "FAILED",
       errorMessage: message,
     });
+    try {
+      await storage.appendAuditEvent({
+        action: "EXPORT_FAILED",
+        actor: "operator", exportId,
+        payload: JSON.stringify({ error: message }),
+      });
+    } catch {}
     await cleanupExportFile(exportId);
   }
 }
