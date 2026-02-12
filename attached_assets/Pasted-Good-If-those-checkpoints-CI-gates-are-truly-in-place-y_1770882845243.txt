@@ -1,0 +1,146 @@
+Good. If those checkpoints + CI gates are truly in place, you’ve just moved from “tamper-evident DB logging” to **tamper-evident + externally verifiable cryptographic attestation**, which is the actual procurement-grade jump.
+
+What I would do next is **not** add more features. It’s a verification-and-release pass that makes this *hand-offable* and *hostile-auditor-proof*.
+
+## 1) Lock the acceptance criteria with a single “Proof Run” script (P0)
+
+Right now you have multiple scripts + docs. Create one orchestrator that produces a **single bundle of evidence** on demand.
+
+**Add:** `scripts/proof_run.sh` (or `proof_run.ts`) that does:
+
+1. `pnpm install` / `pnpm test` / `pnpm typecheck`
+2. Starts server (ephemeral DB or local)
+3. Runs `scripts/demo.sh`
+4. Creates enough audit events to force at least 1 checkpoint
+5. Exports forensic pack `--from/--to` that spans a checkpoint boundary
+6. Verifies pack offline using:
+
+   * packHash
+   * audit chain replay
+   * checkpoint signature verification (with `--public-key`)
+7. Performs a tamper test:
+
+   * mutate 1 byte in one event payload
+   * expects verifier to fail and to report the correct first-bad pointer
+
+**Acceptance criteria**
+
+* One command yields a directory like `artifacts/proof_run/<timestamp>/` containing:
+
+  * `demo_transcript.log`
+  * `forensic_pack.json`
+  * `verify_output.txt`
+  * `tamper_verify_output.txt`
+  * `version.json` (semver, commit, engine id)
+* This is what you hand to a skeptical reviewer.
+
+## 2) Make CI publish the proof bundle as an artifact (P0)
+
+You already added gates; now make CI *produce proof*.
+
+**Add to workflow**
+
+* After tests pass, run `proof_run` in CI (or a CI-light version if you can’t run the full server).
+* Upload the artifact bundle.
+
+**Acceptance criteria**
+
+* Every successful CI run attaches the proof bundle.
+* Every failed run points to the exact violated invariant (wire-boundary grep, drift guard, checkpoint verify, etc.).
+
+## 3) Tighten checkpoint semantics so they’re ungameable (P0/P1)
+
+You’ve implemented signed checkpoints; now clarify their “contract”.
+
+**Contract clarifications to enforce**
+
+* Checkpoint payload is **fully deterministic** and includes:
+
+  * `checkpoint_seq` (or id)
+  * `event_seq`
+  * `event_hash`
+  * `ts`
+  * `prev_checkpoint_hash` (hash-chain checkpoints themselves)
+  * `audit_payload_version`
+  * `engine_id` (optional but nice)
+* Signature is over canonical bytes (via the same canonicalizer)
+* Verify path:
+
+  * verify checkpoint chain
+  * verify checkpoint signature
+  * verify checkpoint anchors to an event hash that is itself correct
+
+**Acceptance criteria**
+
+* A DB rewrite that changes historical events cannot “repair” the chain without also breaking at least one checkpoint signature *or* checkpoint chain continuity (assuming private key not compromised).
+
+## 4) Release packaging: “Verifier-only” distribution (P1)
+
+Your offline verifier must be distributable without your repo.
+
+**Deliverable**
+
+* `releases/verifier-vX.Y.Z.zip` containing:
+
+  * compiled verifier (or `node` bundle)
+  * public key (or a separate “key distribution” doc)
+  * README with 3 commands: verify, show-first-bad, tamper-demo
+
+**Acceptance criteria**
+
+* A third party with zero repo access can verify a pack from the zip alone.
+
+## 5) Documentation polish: merge the story into 3 documents (P1)
+
+Right now you’ve got STATE, API_CONTRACTS, THREAT_MODEL, REGULATORY_ALIGNMENT, CRYPTO_AGILITY, FORENSIC_EXPORT_PACK, DEMO_SPINE.
+
+That’s good internally, but externally it’s too many entry points. Keep them all, but add a **thin “index spine”**:
+
+### Add `docs/START_HERE.md`
+
+* 90-second overview
+* links in required reading order:
+
+  1. DEMO_SPINE
+  2. FORENSIC_EXPORT_PACK
+  3. THREAT_MODEL
+  4. REGULATORY_ALIGNMENT
+  5. API_CONTRACTS
+  6. STATE (operator truth)
+
+**Acceptance criteria**
+
+* A hostile reader can’t claim “unclear where to begin.”
+
+## 6) The next real moat: external anchoring (P1)
+
+Signed checkpoints are the major upgrade, but some buyers will still ask: “Where do the checkpoints live such that a privileged admin can’t erase them?”
+
+Cheapest credible answer:
+
+* store checkpoint records in **WORM-capable storage** (e.g., S3 Object Lock) or a third-party timestamping service, on an interval.
+
+**Acceptance criteria**
+
+* You can demonstrate a “checkpoint export” stream that is append-only outside the DB’s control plane.
+
+---
+
+# What I’d do *this week* (exact sequence)
+
+If your goal is “ready to show”:
+
+1. Implement `proof_run` → produces proof bundle locally
+2. Update CI → uploads proof bundle artifact
+3. Verifier-only zip packaging (even if manual at first)
+4. `START_HERE.md` spine
+
+That’s it. It turns “we built it” into “anyone can verify it.”
+
+---
+
+## One concrete question (so I can steer precisely without rehashing)
+
+Where are you pointing this next: **pilot meeting** (CMO/GC), **investor diligence**, or **open-source/public launch**?
+
+No matter what you answer, the same work above is useful—but the *order* changes (e.g., pilots prioritize demo/proof bundle; investors prioritize regulatory matrix + moat narrative; OSS prioritizes packaging + CI artifacts).

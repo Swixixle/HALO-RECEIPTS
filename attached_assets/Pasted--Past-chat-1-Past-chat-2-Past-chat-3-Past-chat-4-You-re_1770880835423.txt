@@ -1,0 +1,125 @@
+([Past chat][1])([Past chat][2])([Past chat][3])([Past chat][4])
+
+You’re basically at “core is defensible, now make it **legible + repeatable**.”
+
+Given the current state (typecheck clean, 42 tests passing, liveness/readiness split correct, audit verify operator-grade, boundary invariant enforced + CI guard, STATE.md + API_CONTRACTS.md exist), the highest-leverage next work is **Demo Spine** + **Forensic Export Pack** + **Threat Model polish**—in that order.
+
+## 1) Demo Spine (6–8 minutes, scripted, repeatable)
+
+Goal: anyone (CMO/GC/CTO) can watch it and walk away with: **what it is, what it is not, why it’s safe, and how to operate it**.
+
+### Demo outline (operator walkthrough)
+
+**Minute 0–1: Premise**
+
+* “This system proves *integrity of AI outputs/events* without claiming semantic truth.”
+* “We do *tamper-evidence* and *operator-grade verification*, not truth arbitration.”
+
+**Minute 1–2: Health vs Ready**
+
+* Hit `/api/health` (liveness): always 200, no DB dependency.
+* Hit `/api/ready` (readiness): DB + audit head check; can show “degraded” without flapping the pool.
+
+**Minute 2–4: Audit chain verification**
+
+* Call `/api/audit/verify` with:
+
+  * default cap behavior and `partial` reporting
+  * show `firstBadSeq` behavior on an intentionally corrupted chain (or demo fixture)
+  * show cursor-based segment verify (`fromSeq/toSeq`) to prove targeted verification.
+
+**Minute 4–5: Boundary invariant (the trust boundary)**
+
+* Explain the invariant: `observation_type` is wire-only; internal is `observationType`.
+* Mention CI guard enforces this (build fails on drift).
+* Show the two boundary tests:
+
+  * “no internal object contains observation_type”
+  * “wire → internal → wire round-trip stability”
+
+**Minute 5–6: Error discipline / operator ergonomics**
+
+* Show JSON 404 for `/api/*` routes.
+* Show standardized error shape.
+* Show rate limiting on verify.
+
+**Minute 6–8: Guarantees + Non-goals**
+
+* Guarantees: integrity, reproducibility, verification contract, partial coverage honesty.
+* Non-goals: semantic truth, completeness beyond cap, “AI is correct,” etc.
+
+**Deliverable:** a single `docs/DEMO_SPINE.md` with:
+
+* exact curl commands
+* expected outputs (redacted / minimal)
+* “if you see X, it means Y” operator interpretation
+
+If you want, you can also add a `scripts/demo.sh` that runs the whole spine end-to-end with clean formatting.
+
+---
+
+## 2) Forensic Export Pack (evidence artifact you can hand to a third party)
+
+Goal: create a **portable evidence bundle** that lets an external reviewer verify integrity without access to your system internals.
+
+### What the pack should include (minimum viable)
+
+**A) Audit segment export**
+
+* events `[fromSeq..toSeq]`
+* includes `seq`, `prevHash`, `hash`, `ts`, `type`, `payloadHash`/payload (whatever your audit payload includes)
+* plus the segment header: `{ fromSeq, toSeq, exportedAt, headAtExportTime? }`
+
+**B) Verification manifest**
+
+* tool version, git commit, build id
+* hash algorithm identifiers
+* verification result (`ok`, `checkedEvents`, `partial`, `firstBadSeq`, etc.)
+
+**C) Re-verifier**
+
+* a tiny CLI (Node or Python) that:
+
+  * reads the pack
+  * replays hash chain verification deterministically
+  * outputs PASS/FAIL + first failing seq
+* This is the “courtroom move”: *verification without trusting your running service.*
+
+**Deliverable:** `docs/FORENSIC_EXPORT_PACK.md` + `scripts/export_forensic_pack.(ts|py)` + `scripts/verify_forensic_pack.(ts|py)`
+
+This is also a **sales weapon** because it’s concrete: “Here’s how we let outsiders audit us.”
+
+---
+
+## 3) Threat Model polish (make it a first-class artifact, not a vague doc)
+
+You already have threat/security docs partially; what’s left is tightening them into an operator-facing “if/then” structure:
+
+### Sections to add/tighten
+
+* **Assets:** audit chain integrity, boundary invariant, verification contract, auth tokens, DB integrity
+* **Adversaries:** malicious operator, compromised DB, malicious client, partial export manipulation
+* **Threats & mitigations (table):**
+
+  * event deletion/insertion/reorder → chain breaks; verify detects; `firstBadSeq` points
+  * partial verification misuse → `partial` explicitly reported + capped
+  * boundary drift → CI grep guard + drift tests
+  * API confusion (HTML fallbacks) → JSON 404 and explicit `/api/*` contracts
+* **Residual risk:** “This does not prove semantic truth” (repeat it until nobody can misinterpret)
+
+**Deliverable:** `docs/THREAT_MODEL.md` v2 with an explicit “Operator Misuse / Misinterpretation” section.
+
+---
+
+## What I’d do next (pick the most leverage with least risk)
+
+1. **DEMO_SPINE.md + demo script** (fastest way to convert engineering rigor into stakeholder confidence)
+2. **Forensic Export Pack + verifier CLI** (highest defensibility jump)
+3. **Threat model polish** (locks interpretation + reduces procurement attack surface)
+
+If you want a single “sprint target,” do #1 and #2 together: the demo ends by exporting a pack and verifying it offline. That’s the cleanest “drop-the-mic” flow.
+
+[1]: https://chatgpt.com/c/6986d90e-15e8-832c-baf4-7e11233a1797 "Repo demo walkthrough"
+[2]: https://chatgpt.com/c/6982e88b-f9f4-8330-ae2a-045b83bc6750 "Understanding the Halo"
+[3]: https://chatgpt.com/c/698473f0-7ba4-832e-be67-79bbbbc8c632 "Internal consistency review"
+[4]: https://chatgpt.com/c/6983b0f9-63fc-8331-a91e-75f894a68312 "File Access Clarification"

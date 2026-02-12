@@ -1,0 +1,161 @@
+You’ve mixed in a bunch of “agent narration” text there, but the **real, verifiable state** (based on what *you* actually ran and showed) is:
+
+## Current status (what’s actually true)
+
+### GitHub / HALO-RECEIPTS
+
+* ✅ GitHub Actions E2E workflow is **passing on main** (you proved it via `gh run view …` logs).
+* ✅ You added **tsx** and updated workflow to run **local** `./node_modules/.bin/tsx …` (good: no npx drift).
+* ✅ `npm audit fix` ended at **found 0 vulnerabilities**.
+* ✅ You added `npm run e2e` script and pushed it.
+
+So yes: **the “manual pushes” you needed for CI stabilization are done**. You can stop doing “panic pushes” for CI.
+
+---
+
+# The most powerful next move (whole project: HALO + ELI + Lantern)
+
+### Build one “Proof Spine Demo” that sells the *architecture*, not the code:
+
+**A public, one-click demo that always works:**
+
+* Verify screen: paste a receipt ID → get **ProofPack** (hash, signature, audit chain) *without exposing transcript*
+* Lantern: only allows followups **if proof-gate passes**
+* A “Try Demo” button that seeds a known-good receipt
+
+That single demo becomes:
+
+* **HALO wedge** (public credibility + adoption)
+* **Lantern showcase** (proof-gated intelligence)
+* **ELI lead-in** (enterprise governance + auditability narrative)
+
+Everything else (ELI pilot, CFO deck, institutional packaging) becomes easier once this spine is stable and demoable.
+
+---
+
+# “From where do I start?” / “Do I make a new app?”
+
+## Start from **HALO-RECEIPTS** (same repo). Don’t spawn a new app yet.
+
+You want **one canonical repo** that:
+
+* runs locally,
+* runs in GitHub CI,
+* runs in Replit as a public demo.
+
+### Which project should be open?
+
+Open/import the **HALO-RECEIPTS GitHub repo** into Replit as the **demo runtime**.
+
+**Why:** It’s already the repo you hardened. Replit should run *that exact commit lineage* so GitHub Actions and Replit are never divergent organisms.
+
+---
+
+# Can I “tell Replit or Copilot to connect it”?
+
+I can’t directly control Replit/Copilot actions. But you can connect them in ~60 seconds:
+
+## Replit ←→ GitHub (the correct way)
+
+1. In Replit: **Create Repl → Import from GitHub**
+2. Paste the repo URL: `https://github.com/Swixixle/HALO-RECEIPTS`
+3. After import:
+
+   * Use Replit’s **Version Control** panel for commits/pushes *or* use the shell (`git status`, `git push`).
+
+If you already have a Repl: make sure it was imported from GitHub, not created empty.
+
+---
+
+# The one thing you must decide for the demo: “VERIFIED” vs “PARTIALLY_VERIFIED”
+
+Your Lantern proof-gate likely expects **VERIFIED**. A demo seed that’s unsigned will only be **PARTIALLY_VERIFIED**, and then Lantern blocks (correctly).
+
+So you have two sane demo options:
+
+## Option 1 (recommended): demo seeds a **fully VERIFIED** receipt
+
+Do **not** commit a private key to the repo.
+
+* Put a demo signing private key into **Replit Secrets**
+* Keep only the **public key** (or issuer id) in the repo/trusted registry
+
+### Generate a demo Ed25519 keypair locally (one-time)
+
+Run locally (Mac/Linux):
+
+```bash
+node -e "
+const { generateKeyPairSync } = require('crypto');
+const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+console.log('PUBLIC_PEM='); console.log(publicKey.export({ type:'spki', format:'pem' }).toString());
+console.log('PRIVATE_PEM='); console.log(privateKey.export({ type:'pkcs8', format:'pem' }).toString());
+"
+```
+
+Then:
+
+* In Replit → **Secrets**:
+
+  * `DEMO_SIGNER_PRIVATE_PEM` = (private pem)
+* In your repo config / key registry:
+
+  * add `DEMO_SIGNER_PUBLIC_PEM` (public pem) as a trusted issuer/signer
+
+Now your demo seed endpoint can:
+
+* build canonical payload → hash
+* sign with `DEMO_SIGNER_PRIVATE_PEM`
+* verify with public key → result becomes **VERIFIED**
+
+## Option 2 (acceptable): allow Lantern to accept PARTIALLY_VERIFIED **in demo mode only**
+
+This is less pure, but fast:
+
+* Add `DEMO_MODE=true`
+* If `DEMO_MODE`, Lantern accepts `PARTIALLY_VERIFIED` but shows an **orange “DEMO: unsigned receipt”** banner.
+
+---
+
+# What to do right now (tight next steps)
+
+If you want the strongest move with minimal chaos, do this sequence:
+
+1. **Import HALO-RECEIPTS into Replit from GitHub**
+2. Ensure Replit can run:
+
+   ```bash
+   npm ci
+   npm run e2e
+   ```
+3. Implement **demo seed** (signed, via Replit Secret key) + “Try Demo” button
+4. Ensure GitHub Actions still passes (push from Replit or local)
+
+---
+
+# Quick correction on that zsh error you hit earlier
+
+When you pasted:
+
+```json
+{
+  "scripts": { "e2e": "..." }
+}
+```
+
+into zsh, it failed because **that’s JSON, not a shell command**. Your fix using:
+
+```bash
+npm pkg set scripts.e2e="tsx scripts/verify-public-mode.test.ts"
+```
+
+was the correct approach.
+
+---
+
+If you answer with just **“A”** or **“B”**:
+
+* **A** = “I want VERIFIED demo receipts (signed)”
+* **B** = “I want demo-mode exception for PARTIALLY_VERIFIED”
+
+…I’ll give you the exact endpoint + UI wiring plan for the path you pick (no fluff, straight to implementation order).

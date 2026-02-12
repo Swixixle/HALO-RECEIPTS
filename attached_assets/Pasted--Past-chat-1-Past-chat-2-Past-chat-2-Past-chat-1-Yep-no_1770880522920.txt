@@ -1,0 +1,157 @@
+([Past chat][1])([Past chat][2])([Past chat][2])([Past chat][1])
+
+Yep — now’s the right moment to zoom out and do a *whole-system* assessment, because you’ve crossed the “it compiles” threshold into the “is it operator-safe, testable, and demoable?” phase.
+
+Here’s what I’d do next (high leverage, minimal churn), in a sequence that hardens the product **as a system** rather than polishing isolated files.
+
+## 1) Lock the system boundary as a formal invariant
+
+You already have the right pattern:
+
+* **wire format**: `observation_type`
+* **internal**: `observationType`
+
+Next step is to make that a **non-negotiable contract** across the repo:
+
+**Add one canonical boundary module** (even if it already exists informally):
+
+* `wire.ts` (or `boundary.ts`)
+
+  * `toWireAdapterRequest(internal): AdapterRequest`
+  * `fromWireAdapterResponse(wire): AdapterObservation`
+  * `toWireLlmObservation(internal): LlmObservation`
+
+**Then forbid** constructing `AdapterRequest` / `LlmObservation` anywhere else.
+
+**Enforcement:**
+
+* A recursive test: *no internal object contains `observation_type`* (except boundary outputs).
+* Optional: an ESLint rule (or just a `grep` guard in CI) that fails if `observation_type` appears outside boundary files + type definitions.
+
+This is how you prevent “boundary drift” six weeks from now.
+
+## 2) Perform a “Readiness Sweep” against operator expectations
+
+You want to validate: “If a hospital CISO / engineer hits this API, do they get clean JSON, stable contracts, and predictable failure modes?”
+
+Checklist (concrete):
+
+### Endpoints
+
+* `/api/health`
+
+  * **always 200**
+  * **no DB**
+  * JSON only
+* `/api/ready`
+
+  * DB ping + minimal audit head sanity (cheap)
+  * **only returns 503 when DB down**
+  * returns `status: ok|degraded`, `ready: boolean`
+* `/api/audit/verify`
+
+  * always JSON (including auth failures)
+  * server-side cap (you already have)
+  * reports **partial coverage** clearly
+  * includes operator-friendly pointers (`firstBadSeq`, `checkedEvents` alias, etc.)
+
+### Failure discipline
+
+* Every `/api/*` route returns JSON (no SPA fallback HTML).
+* Standard error shape everywhere (one helper).
+
+If any one of those is flaky, that’s where a skeptical reviewer will “trash” it.
+
+## 3) Add “Golden Proof” tests that verify the *promises*, not the code
+
+You already started down this road with golden tests. The next step is to make them *promise-oriented*:
+
+### Audit chain tests should prove:
+
+* append → verify passes
+* tamper → verify fails at the first bad seq
+* partial verify is explicitly indicated (and counted)
+* cap enforcement doesn’t silently mislead (i.e., “partial: true”)
+
+### Boundary tests should prove:
+
+* round-trip stability: internal → wire → internal yields same enum value
+* recursive absence: internal pipeline objects never contain `observation_type`
+
+This protects you from future refactors breaking your “sealed boundary” claim.
+
+## 4) Add minimal “operator telemetry”
+
+Not observability theater—just enough to answer:
+
+* “Is readiness flapping?”
+* “Is verify endpoint being hammered?”
+* “How long does verify take?”
+
+Minimum viable:
+
+* structured logs with `route`, `status`, `latency_ms`, `checkedEvents`, `partial`
+* in-memory counters (fine for now) exported on a `/api/metrics` endpoint later if you want
+
+This is one of those “tiny effort, huge credibility” additions.
+
+## 5) Define your “Demo Spine”
+
+You’re very close to having a compelling demo that doesn’t reveal secrets.
+
+A credible 6–8 minute operator demo spine:
+
+1. Show `/api/health` and `/api/ready` behavior (including degraded state semantics).
+2. Create 2–3 audit events via a normal user workflow.
+3. Run `/api/audit/verify` → show OK + checked count.
+4. Tamper one DB row manually (or simulate) → verify fails with first bad seq.
+5. Show boundary discipline: the UI displays “Observation Type” but never leaks `observation_type` internally except at the wire edge.
+6. Close with “what it does NOT do” (semantic truth, PHI custody, etc.)
+
+If you can do *that* cleanly, you have an institutional-grade story.
+
+## 6) Decide the next engineering milestone
+
+Given where you are, I’d pick **one** of these as the next “version line”:
+
+### Option A — “Operator-Grade API Contracts” (fastest credibility)
+
+* `docs/API_CONTRACTS.md`
+* standardized error shapes
+* JSON 404 for `/api/*`
+* rate limiting on verify
+
+### Option B — “Forensic Export Pack” (buyers love this)
+
+* export audit verify report to a file artifact (JSON)
+* include checked range, head hash, timestamps, partial flags
+* makes “evidence packet” real
+
+### Option C — “Threat Model + Non-Goals as a first-class artifact”
+
+* explicit adversary model
+* what’s covered / not covered
+* maps directly to procurement scrutiny
+
+If you choose only one: **Option A**.
+
+---
+
+### My recommended “next step” (do this now)
+
+Do a *whole-system* state capture so you can stop relying on memory:
+
+Create/update a single file (call it `STATE.md` or `SYSTEM_STATE.md`) with:
+
+* current endpoint contracts (health/ready/verify)
+* audit verify return schema + example
+* boundary rule (wire vs internal naming)
+* test inventory (goldens + E2E + boundary)
+* known gaps / next milestones
+
+That becomes your authoritative reference during every future sprint.
+
+If you want, tell me which milestone you’re choosing (A/B/C). If you don’t pick, I’ll assume **A** and I’ll lay out the exact contract text + the minimum test cases you should have so the story is airtight.
+
+[1]: https://chatgpt.com/c/6981a519-900c-832e-a7ee-2fc87ffcfd50 "System State Review"
+[2]: https://chatgpt.com/c/6980caec-995c-8333-8999-5117ded923c2 "Uploaded Files and Limits"

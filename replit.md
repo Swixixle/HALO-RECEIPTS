@@ -1,264 +1,103 @@
 # AI Receipts - Forensic Verification System
 
 ## Overview
-AI Receipts is a forensic verification system for AI conversation transcripts. It provides cryptographic verification of receipt capsules, immutable storage, and forensic analysis capabilities.
+AI Receipts is a forensic verification system designed to provide cryptographic verification, immutable storage, and forensic analysis for AI conversation transcripts. Its core purpose is to ensure the integrity and authenticity of AI interactions, enabling detailed forensic examination and preventing tampering. The project aims to establish a trusted framework for AI accountability and transparency.
 
-## Core Features
-- **Receipt Verification**: Validates AI conversation receipts using SHA-256 hash verification
-- **Canonicalization (c14n-v1)**: Deterministic JSON canonicalization for consistent hashing
-- **Immutable Storage**: Verified receipts are locked and cannot be modified
-- **Kill Switch**: Irreversible control to permanently disable interpretation for a receipt
-- **Interpretation System**: Categorized as FACT, INTERPRETATION, or UNCERTAINTY (append-only)
-- **Tri-Sensor Analysis**: Parallel analysis with interpreter, summarizer, and claim extractor
+## User Preferences
+Not specified.
 
-## API Endpoints
+## System Architecture
 
-### Verification
-- `POST /api/verify` - Verify and store a receipt capsule
-- `GET /health` - Health check
+### Core Capabilities
+- **Receipt Verification**: Validates AI conversation receipts using SHA-256 hash verification and Ed25519 signatures.
+- **Canonicalization (c14n-v1)**: Employs deterministic JSON canonicalization for consistent hashing across all receipts.
+- **Immutable Storage**: Verified receipts are permanently locked against modification.
+- **Kill Switch**: Provides an irreversible mechanism to disable interpretation for any given receipt.
+- **Interpretation System**: Supports append-only interpretations categorized as FACT, INTERPRETATION, or UNCERTAINTY.
+- **Tri-Sensor Analysis**: Facilitates parallel analysis of transcripts using an interpreter, summarizer, and claim extractor.
+- **Receipt Chaining**: Verifies cryptographic links between sequential receipts using SHA256 hashes of canonicalized core fields.
+- **Forensic Detectors**: Independently analyze transcripts for risk keywords, high-entropy patterns, and PII heuristics, generating integrity context based on verification status.
+- **LLM Sensor Integration**: Allows LLMs to observe and describe transcript content (paraphrase, ambiguity, tone, etc.) without making truth judgments, ensuring data isolation from verification outcomes.
+- **Research Dataset**: Generates anonymized, aggregatable research data for model behavior analysis with explicit opt-in consent and strict exclusion of sensitive information.
+- **Tamper-Evident Share Pack**: Provides a hash-chained forensic event log and a system for building verifiable share packs with sensitive data redaction.
+- **Bulk Export System**: Allows authenticated users to export receipts in various formats (JSONL, CSV) with guardrails for PII and kill-switched content.
+- **Saved Views**: Enables users to store and manage filtered receipt views.
+- **Receipt Comparison**: Side-by-side comparison of two receipts with field deltas, forensics comparison, and per-side actions (View Detail, Proof Pack, Export).
+- **Proof Spine v1**: Canonical `/api/proofpack/:receiptId` endpoint returns unified proof pack with integrity, signature, chain status, and audit summary. All downstream modules consume this single contract.
+- **Proof-Gated Lantern**: `POST /api/lantern/followup` only responds when receipt is VERIFIED. Stores durable threads with ProofPack snapshot. Thread CRUD: `GET /api/lantern/threads/:receiptId`, `GET /api/lantern/thread/:threadId/messages`.
+- **Durable Threads**: `threads` and `thread_messages` tables for conversation continuity with receipt binding and ProofPack snapshot at creation time.
+- **Append-Only Audit Trail**: Logs all operator actions (saved view create/delete/apply, bulk export lifecycle, receipt export, comparison views, lantern followup) with IP, user-agent, and JSON payload. Displayed on Governance page with action filter, receipt ID filter, pagination, and copy-payload button.
+- **Backend Pagination**: Implements server-side pagination, filtering, and sorting for efficient data retrieval.
+- **Health Endpoints**: `GET /api/health` (liveness, no DB), `GET /api/ready` (readiness, DB + audit head, anti-flap), `GET /api/health/metrics` (in-memory counters).
+- **Cursor-Based Audit Verify**: `GET /api/audit/verify` supports `fromSeq`/`toSeq` for targeted segment verification, rate-limited via `rateLimitVerify`.
+- **Security Headers**: X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy on all responses.
+- **Wire/Internal Boundary**: Formalized `wireToInternalObservationType()` / `internalToWireObservationType()` in `server/llm/wire-boundary.ts`.
+- **Instrumentation**: Structured JSON logging + in-memory counters for audit, policy, adapter, and rate-limit events.
+- **Ed25519 Signed Checkpoints**: Automatic checkpoint creation every N events (configurable via `CHECKPOINT_INTERVAL`), stored in `audit_checkpoints` table with signature verification. Signed payload includes `engine_id`, `audit_payload_version`, `checkpoint_seq`, `event_seq`, `event_hash` for ungameable binding.
+- **Checkpoint Chain Continuity**: Each checkpoint links to its predecessor via `prev_checkpoint_id` and `prev_checkpoint_hash`, verified by offline verifier.
+- **Version Stamping**: Centralized `server/version.ts` embeds semver + git commit in forensic packs and API responses.
+- **CI**: GitHub Actions workflow (`.github/workflows/ci.yml`) runs typecheck, test, canon drift guard, boundary drift guard, proof run, build on PR + main. Proof bundle uploaded as artifact with 90-day retention.
+- **Proof Run**: `scripts/proof_run.ts` orchestrates end-to-end proof generation: tests → event generation → checkpoint forcing → forensic pack export → clean verification → tamper detection → artifact output.
+- **Verifier Release**: `scripts/build_verifier_release.ts` packages standalone offline verifier into self-contained zip (compiled JS + public key + README, no external dependencies).
+- **Release Workflow**: `.github/workflows/release.yml` triggers on `v*` tags, runs full CI, builds proof bundle + verifier zip, computes SHA-256 checksums, publishes GitHub Release.
+- **Key Ring Support**: Verifier accepts `--key-ring <dir>` for multi-key verification; each checkpoint's `publicKeyId` matched to `<kid>.pem` file. Enables seamless key rotation.
+- **Key Custody Model**: Dev/staging/prod key environments with `CHECKPOINT_KEY_ENV` classification. Key ring rotation protocol documented in THREAT_MODEL.md.
+- **External Anchoring**: `server/checkpoint-anchor.ts` defines `CheckpointAnchor` interface with `anchor()`, `verify()`, `name()` methods. Four backends: LogOnly (default), S3WormAnchor (real S3 Object Lock with GOVERNANCE/COMPLIANCE modes), Rfc3161TsaAnchor (RFC3161 timestamp authority with messageImprint validation and trusted fingerprints), MultiAnchor (fan-out to multiple backends). Configured via `CHECKPOINT_ANCHOR_TYPE` env var. S3 supports cross-account IAM, configurable retention days, objectBody/objectHash for offline verification. RFC3161 supports pinned TSA cert allowlist.
+- **Anchor Modes**: `--anchors=required` in proof_run hard-fails when only log-only backend configured. `--anchors=optional` (default) allows log-only for dev/testing.
+- **Anchor Payload v1**: Constant-size canonical JSON payload with `_v`, `engine_id`, `audit_payload_version`, `checkpoint_id`, `checkpoint_seq`, `event_seq`, `event_hash`, `checkpoint_hash`, `kid`, `created_at`. SHA-256 hash of payload stored as `anchorHash`.
+- **Anchor Receipts in Forensic Packs**: Format 1.2 includes `anchorReceipts` array. Offline verifier validates anchor hash integrity, checkpoint binding, and reports anchor type coverage.
+- **Proof Bundle Spec**: `docs/PROOF_BUNDLE.md` documents bundle files, what each proves, expected outputs, and failure meanings.
+- **Regulatory Alignment**: `docs/REGULATORY_ALIGNMENT.md` maps capabilities to 21 CFR Part 11, HIPAA, SOC 2, ISO 27001, EU AI Act, NIST AI RMF.
+- **Regulatory Matrix Excerpt**: `docs/REGULATORY_MATRIX_EXCERPT.md` provides 10-row compliance officer quick reference across 6 frameworks.
+- **Executive Summary**: `docs/EXECUTIVE_SUMMARY.md` 2-page non-technical overview for pilots.
+- **Crypto Agility**: `docs/CRYPTO_AGILITY.md` documents signature abstraction and PQC migration roadmap (Ed25519 → ML-DSA).
+- **Documentation Index**: `docs/START_HERE.md` provides 90-second overview, pilot packet links, reading order, and release process description.
+- **Non-Goals Document**: `docs/NON_GOALS.md` defines explicit boundaries: no truth judgments, no content moderation, no real-time monitoring, single-operator model.
+- **Competitive Comparison**: `docs/COMPETITIVE_COMPARISON.md` positions system vs. AI observability, immutable databases, and governance platforms.
+- **Release Reproducibility**: CI rebuilds verifier zip and compares SHA-256 hashes for deterministic builds.
+- **Sigstore Cosign Signing**: All release artifacts signed with keyless OIDC; `.sig` and `.pem` files published.
+- **SBOM**: CycloneDX 1.5 format documenting zero external dependencies.
+- **Key Rotation Proof Tests**: 8 tests covering dual-key eras, chain continuity across rotation, missing/wrong key detection.
+- **Anchor Integration Tests**: 22 tests covering anchor_hash integrity, tamper detection, S3 objectBody/objectHash validation, RFC3161 messageImprint validation, MultiAnchor fan-out, anchor-required mode, payload binding.
+- **Failure-Mode Playbooks**: Key compromise, key loss, incorrect rotation, unknown kid resolution procedures in THREAT_MODEL.md.
+- **External Anchoring Guide**: `docs/EXTERNAL_ANCHORING.md` documents what anchoring prevents/doesn't, threat model delta (2-party → 4-party collusion), minimal IAM policy, deployment recommendations.
+- **Pilot Setup Guide**: `docs/PILOT_SETUP_AWS_ANCHOR_ACCOUNT.md` step-by-step AWS S3 Object Lock anchor account setup with IAM policy, retention config, cross-account setup, and verification checklist.
+- **TSA Providers Guide**: `docs/TSA_PROVIDERS.md` tested TSA provider configs (FreeTSA, DigiCert, Sectigo), fingerprint pinning instructions, environment recommendations.
+- **Objections Document**: `docs/OBJECTIONS_AND_PRECISE_ANSWERS.md` stakeholder Q&A one-pager covering truth claims, admin rewrite, key rotation, anchor downtime, offline verification, PII, verifier integrity, compliance, non-goals.
+- **Pilot Runbook**: `docs/PILOT_RUNBOOK.md` end-to-end pilot flow from clone to verified proof with artifact inventory.
+- **Anchor Smoke Test**: `scripts/anchor_smoke.ts` validates anchor backend (S3/TSA/log-only) write, verify, binding, and tamper detection.
+- **TSA Smoke Test**: `scripts/tsa_smoke.ts` validates RFC3161 TSA messageImprint, payload binding, and tamper detection.
+- **CI Split**: `.github/workflows/ci.yml` split into 4 jobs: test gate, determinism gate, proof bundle (log-only), proof bundle (anchored, conditional on ANCHORS_AVAILABLE var).
 
-### Receipt Management
-- `GET /api/receipts` - List all receipts
-- `GET /api/receipts/:receiptId` - Get receipt detail with interpretations
-- `POST /api/receipts/:receiptId/kill` - Engage kill switch (irreversible)
+### UI/UX Decisions
+- Frontend built with React, TypeScript, Tailwind CSS, and shadcn/ui.
+- Row virtualization is used for efficient rendering of large datasets.
+- UI components include debounced search, filter selectors, pagination controls, and confirmation dialogs for sensitive operations.
+- Global audit integrity banner at top of all pages showing verified/partial/broken/degraded status.
 
-### Interpretation
-- `POST /api/receipts/:receiptId/interpret` - Add interpretation (guarded)
-- `POST /api/receipts/:receiptId/tri-sensor` - Run tri-sensor analysis
+### Technical Implementation
+- **Backend**: Express.js with Node.js 20.
+- **Database**: PostgreSQL with Drizzle ORM.
+- **Validation**: Zod schemas for robust data validation.
+- **Cryptography**: Node.js built-in crypto module for SHA-256 hashing and Ed25519 signing.
+- **Rate Limiting**: Per-IP burst and sustained rate limits on API endpoints.
+- **Authentication**: API key-based authentication for private endpoints.
+- **Testing**: 72 tests total — 35 golden tests + 7 E2E integration tests + 8 key rotation proof tests + 22 anchor integration tests (run via `npx vitest run --config vitest.config.ts`).
+- **Guards & Constraints**:
+    - Unverified receipts cannot be interpreted.
+    - Kill switch is irreversible and blocks all interpretations.
+    - Interpretations are append-only.
+    - Immutable lock prevents raw JSON modification.
+    - Private endpoints require valid API keys.
 
-### Export & Configuration (P1)
-- `GET /api/receipts/:receiptId/export` - Export complete forensic report (JSON)
-- `GET /api/config/transcript-mode` - Get current transcript display mode
-
-## Data Schemas
-
-### Receipt Capsule (Input)
-```json
-{
-  "schema": "ai-receipt/1.0",
-  "receipt_id": "string",
-  "platform": "string",
-  "captured_at": "ISO-8601",
-  "capture_agent": "string",
-  "transcript": {
-    "embedded": true,
-    "canonicalization": "c14n-v1",
-    "messages": [{"role": "user|assistant|system|tool", "content": "string"}]
-  },
-  "transcript_hash_sha256": "hex-string",
-  "signature": {"alg": "Ed25519", "public_key_id": "string", "value": "string"}
-}
-```
-
-### Verification Status
-- **VERIFIED**: Hash match + VALID signature + (LINKED|GENESIS chain)
-- **PARTIALLY_VERIFIED**: Hash match + (UNTRUSTED_ISSUER|NO_SIGNATURE signature)
-- **UNVERIFIED**: Hash mismatch OR INVALID signature OR BROKEN chain
-
-## Ed25519 Signature Verification (P2/P3 Completed)
-- **Key Registry**: `server/key-registry.ts` - maps public_key_id to Ed25519 public keys
-- **Signature Statuses**: VALID, INVALID, UNTRUSTED_ISSUER, NO_SIGNATURE
-- **P3 Key Governance**: ACTIVE/REVOKED/EXPIRED status, valid_from, valid_to, issuer_label, revoked_reason
-- **Key Rotation**: Multiple keys per issuer supported
-- **Test Keys**: test-key-001, test-key-002-rotated (trusted), revoked-key-001, expired-key-001, untrusted-key-001
-
-## Receipt Chain Verification (P2 Completed)
-- **Chain Module**: `server/chain-verification.ts` - verifies chain links
-- **Chain Statuses**: GENESIS, LINKED, BROKEN, NOT_CHECKED
-- **Chain Hash Formula**: SHA256(c14n(capsule_core)) - deterministic canonicalization of signed core fields
-- **Chain Field Naming**:
-  - `expected_previous_hash`: Value in submitted receipt's previous_receipt_hash_sha256 (submitter's claim)
-  - `observed_previous_hash`: Computed receipt_hash_sha256 from stored prior receipt (verifier's computation)
-  - `link_match`: true if expected === observed
-
-## Public Verification Endpoint (P3)
-- `GET /api/public/receipts/:receiptId/verify` - Shareable verification result
-- Respects TRANSCRIPT_MODE (full/redacted/hidden)
-- Returns: schema, verification_status, signature summary, chain summary, integrity, forensics
-- Never leaks raw transcript in hidden mode
-
-## Forensic Detectors (P0 Completed)
-The forensics engine (`detectors/0.1.0`) runs independently of verification status:
-- **based_on**: `"verified_transcript"` for VERIFIED/PARTIALLY_VERIFIED, `"submitted_payload"` for UNVERIFIED
-- **integrity_context**: Records verification status at time of analysis
-- **Risk Keywords (Heuristic)**: Pattern matching only (instructional, medical, legal, financial, self_harm)
-- **High-Entropy Detection**: Pattern-based `[A-Za-z0-9+/]{80,}={0,2}` (NOT Shannon entropy)
-- **PII Heuristics**: Returns counts only, never raw values
-
-## Rate Limiting & Authentication (P4 Completed)
-- **Rate Limiter Module**: `server/rate-limiter.ts` - Per-IP burst + sustained limits
-- **Auth Module**: `server/auth.ts` - API key authentication
-- **Production Policy**: Public verify-by-id only (Option 1)
-  - Public: `GET /api/public/receipts/:id/verify` (rate limited, no auth)
-  - Private: `POST /api/verify` (auth required - prevents storage spam)
-- **Rate limits**:
-  - Public verify: 100/min sustained, 10/sec burst
-  - Private verify: 50/min sustained, 5/sec burst
-- **Private endpoints**: All /api/* require x-api-key header
-- **Request size cap**: 100KB default (Express body-parser), middleware rejects >1MB
-- **Dev test key**: "dev-test-key-12345" (only when NODE_ENV !== "production")
-- **Error responses**: 
-  - 401 Unauthorized - Missing API key (non-revealing message)
-  - 403 Forbidden - Invalid API key (non-revealing message)
-  - 429 Too Many Requests - Rate limit exceeded (includes Retry-After header)
-  - 413 Payload Too Large - Request body exceeds size limit
-
-## Guards & Constraints
-1. Unverified receipts cannot be interpreted
-2. Kill switch is irreversible and blocks all interpretation
-3. Interpretations are append-only (no UPDATE/DELETE)
-4. Immutable lock prevents raw JSON modification
-5. Private endpoints require valid API key (P4)
-
-## Technology Stack
-- Frontend: React + TypeScript + Tailwind CSS + shadcn/ui
-- Backend: Express.js + Node.js 20
-- Database: PostgreSQL with Drizzle ORM
-- Validation: Zod schemas
-- Cryptography: Node.js crypto (SHA-256)
-
-## Sample Test Files
-- `samples/valid_capsule.json` - Valid receipt with matching hash
-- `samples/tampered_capsule.json` - Tampered receipt with hash mismatch
-
-## LLM Integration - Sensor Mode Only (P6 Completed)
-- **Schema Module**: `shared/llm-observation-schema.ts`
-- **Service Module**: `server/llm-sensor.ts`
-- **Schema Version**: llm-observation/1.0
-- **Purpose**: LLMs observe and describe transcripts but NEVER judge truth/validity
-
-### Core Principle: LLMs as Sensors, Not Arbiters
-- LLMs see ONLY transcript content (DATA ISOLATION)
-- LLM observations do NOT affect verification_status, signature_status, or chain_status
-- LLM observations are stored separately from interpretations and research data
-- Multi-model disagreement is displayed WITHOUT reconciliation (no "correct" answer)
-
-### Observation Endpoints
-- `POST /api/receipts/:id/observe` - Generate single-model observation
-- `GET /api/receipts/:id/observations` - List observations for receipt
-- `POST /api/receipts/:id/observe/multi` - Multi-model disagreement detection
-
-### Observation Types
-- `paraphrase`, `ambiguity`, `disagreement`, `tone`, `structure`, `hedging`, `refusal_pattern`
-
-### Language Hygiene (Strictly Enforced)
-Forbidden words (rejected with error):
-- `correct`, `incorrect`, `true`, `false`, `hallucination`, `accurate`, `wrong`, `right`
-- `proves`, `verified`, `invalid`, `therefore`, `misleading`, `deceptive`, `lying`
-
-Required hedging (auto-prefixed if missing):
-- `may`, `might`, `appears`, `could`, `seems`, `possibly`, `potentially`, `suggests`, `indicates`
-
-### Mandatory Fields (Always Present)
-- `confidence_statement`: "This is a model-generated observation, not a factual determination."
-- `limitations`: Array of at least 2 limitation statements
-
-### Data Isolation
-- LLM sensor receives ONLY: transcript messages, observation_type, model_id
-- LLM sensor NEVER receives: verification_status, signature_status, chain_status, forensics
-- LLM observations table is separate from interpretations and research records
-
-### Kill Switch Interaction
-- Kill switch hides all existing observations
-- Kill switch blocks creation of new observations
-- Response includes `kill_switch_engaged: true`
-
-### Mock Sensor Model
-- `mock-sensor` model available for testing without API keys
-- Returns deterministic observations based on observation_type
-
-## Research Dataset Schema (P5 - Completed)
-- **Schema Module**: `shared/research-schema.ts`
-- **Schema Version**: research-record/1.0, research-dataset/1.0, research-consent/1.0
-- **Purpose**: Anonymized, aggregatable research data for model behavior analysis
-
-### What IS Included (safe to export)
-- Verification/signature/chain outcomes (categorical)
-- Platform category (normalized: openai, anthropic, google, meta, mistral, cohere, other, unknown)
-- Structural statistics (message counts, bucketed char counts)
-- Anomaly indicators (boolean flags only)
-- Risk category presence (boolean per category, no counts)
-- PII presence indicators (detected yes/no, never values)
-- Time buckets (day-level only, no exact timestamps)
-- Kill switch status, interpretation counts
-
-### What is NEVER Included (explicit exclusions)
-- Raw transcripts or message content
-- Receipt IDs or correlation identifiers
-- IP addresses or user identifiers
-- Exact timestamps (only day buckets)
-- Raw signatures or public key values
-- Actual PII values (only detection flags)
-- Keyword instances (only category presence)
-
-### Consent Model
-- Opt-in required before research data creation
-- Consent scope: anonymized_statistics, model_behavior_research, academic_publication, commercial_datasets
-- Revocation support with timestamp tracking
-
-## Tamper-Evident Share Pack System (P6 Hardened)
-- **EVENT_LOG.jsonl**: Hash-chained forensic log with SHA256-based chain integrity
-- **Verification Scripts**: verify_forensic_state.ts, snapshot_state.ts, build_share_pack.ts
-- **Proof Update Pipeline**: script/proof_update.ts runs verify, snapshot, build, and logs PROOF_PACK_UPDATED
-- **Independent Verification**: Third parties can verify chain integrity using Python/Node scripts (see INDEPENDENT_VERIFY.md)
-
-### Share Pack Redaction Policy
-- URLs, IPs, API keys, non-synthetic receipt IDs all redacted
-- Synthetic ID patterns allowed: `^(p[0-9]+-|test-|sample-|mock-|synthetic-)`
-- UUID-format strings without synthetic prefix redacted to [UUID_REDACTED]
-- Case-insensitive forbidden word detection for platform-specific terms
-
-### Milestone Events Logged
-- VERIFY_STORED: Receipt verified and stored
-- KILL_SWITCH_ENGAGED: Kill switch activated
-- OBSERVE_CREATED: Single LLM observation created
-- OBSERVE_MULTI_CREATED: Multi-model observation created
-- RESEARCH_RECORD_WRITTEN: Research record created
-- RESEARCH_EXPORT_GENERATED: Research dataset exported
-- PROOF_PACK_UPDATED: Proof pack fully updated
-
-## Future: Receipt Capsule v2 (Proposed)
-See `docs/RECEIPT_CAPSULE_V2.md` for a proposed schema evolution featuring:
-- Per-line commitment chains (LINE_CHAIN_V1) instead of embedded transcripts
-- Cryptographic redaction commitments
-- Policy constraints signed into payload
-- Event log commitments
-
-This is documented for future consideration but not yet implemented.
-
-## Bulk Export v1 (Completed)
-- **Schema**: `export_jobs` table with exportId, status, scope, filtersJson, total, completed, filePath, errorMessage, createdAt, expiresAt
-- **Backend Routes**:
-  - `POST /api/receipts/bulk-export` - Create export job (auth required)
-  - `GET /api/exports/:exportId` - Get job status
-  - `GET /api/exports/:exportId/download` - Download ZIP when READY
-- **ZIP Contents**: receipts.jsonl, receipts.csv, proof_urls.csv, manifest.json, README.txt
-- **Generator**: `server/bulk-export.ts` using archiver, chunked fetching (200/chunk), MAX_ALL_RESULTS=10000
-- **Guardrails**: Kill switch capsule redaction in JSONL, server-side 409 confirm protocol, auth required, 1hr job expiry
-- **409 Confirm Protocol**: First POST without `confirm` → 409 CONFIRM_REQUIRED with `riskCounts` (piiCount, killCount); second POST with `confirm:true` → queues job
-- **Snapshot Boundary**: `requestedAt` timestamp stored at job creation; all queries use `beforeDate` to prevent drift during chunked fetching
-- **Manifest Fields**: requestedAt, generatedAt, capApplied, capLimit (10000), expiresAt
-- **Frontend**: Export dropdown on /receipts ("Export this page" / "Export all results"), server-driven confirm dialog, polling for status, toast with download button
-- **Request Schema**: Zod validated via bulkExportRequestSchema (scope, page, pageSize, status, q, hasForensics, killSwitch, confirm)
-
-## P9-6 Backend Pagination (Completed)
-- **Paged Endpoint**: `GET /api/receipts/paged` with server-side filtering, sorting, pagination
-- **Query Params**: page, pageSize (max 200), status, q (search), hasForensics, killSwitch, order (asc/desc)
-- **Response**: `{ items, total, page, pageSize, totalPages }` with page clamped to valid range
-- **DB Indexes**: idx_receipts_created_at, idx_receipts_verification_status, idx_receipts_kill_switch, idx_receipts_receipt_id
-- **Frontend**: Debounced search (300ms), status/forensics/killSwitch filters, page size selector (50/100/200), prev/next navigation
-- **Validation**: Strict boolean parsing for hasForensics/killSwitch (400 on invalid), status validated against enum
-- **Tests**: 34 table tests (7 new pagination tests), all 69 tests passing
-
-## P9-5 Ops Hardening (Completed)
-- **Row Virtualization**: /receipts uses @tanstack/react-virtual for O(viewport) rendering
-- **Memoized Forensics**: forensicsCache Map avoids re-parsing per render
-- **useCallback**: Badge renderers, sort, copy, export handlers all memoized
-- **Last Updated + Refresh**: Header shows data fetch timestamp + manual refresh button
-- **Auth Banner**: Reusable AuthRequiredBanner component used across receipts, receipt-detail, sensors
-- **Export Safety**: AlertDialog confirms export when PII detected or kill switch engaged
-- **apiFetch Contract Tests**: 10 tests for injection behavior (no prod, no public, e2e throw)
-- **Perf Smoke Tests**: 15 tests (virtualization structure, 5k/10k synthetic rows, parsing/filter/sort benchmarks)
-
-## Running the Application
-The application runs on port 5000 via the "Start application" workflow.
+## External Dependencies
+- **PostgreSQL**: Relational database for storing receipt data, interpretations, and system configurations.
+- **Drizzle ORM**: Object-Relational Mapper for interacting with PostgreSQL.
+- **React**: JavaScript library for building user interfaces.
+- **TypeScript**: Superset of JavaScript that adds static typing.
+- **Tailwind CSS**: Utility-first CSS framework for styling.
+- **shadcn/ui**: Component library built on Tailwind CSS and Radix UI.
+- **Express.js**: Web application framework for Node.js.
+- **Zod**: TypeScript-first schema declaration and validation library.
+- **Archiver**: Library for creating ZIP archives (used in bulk export).
+- **@tanstack/react-virtual**: Library for efficient virtualization of large lists in React.

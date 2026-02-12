@@ -1,0 +1,110 @@
+Receipt Comparison v1: **feature PASS, test harness PARTIAL**.
+
+You built the right product surface (compare page, shared forensics helper, entry point from receipts dropdown, route wiring, sidebar unchanged). The only remaining issue is **E2E reliability** against a **virtualized table**—that’s not “hand-wavy,” it’s a known class of failures unless you add deterministic hooks.
+
+You should *not* mark it “fully tested” until the Compare entry-point is testable in automation. Fix is small and does **not** weaken the app.
+
+---
+
+## What’s correct (accepted)
+
+* ✅ `/compare` supports `?left=&right=` deep linking
+* ✅ Swap button
+* ✅ Summary strip + field-by-field diff rows
+* ✅ Forensics compare (PII/risk/anoms)
+* ✅ Actions per side (Detail, Proof Pack, Export)
+* ✅ No new backend endpoints
+* ✅ Sidebar stayed at exactly 5 items
+* ✅ `client/src/lib/forensics.ts` extraction is the right refactor
+
+---
+
+## What’s not acceptable yet (and why)
+
+### The E2E can’t click “Compare…” from the receipts table
+
+Virtualization doesn’t inherently break Playwright. What breaks tests is:
+
+* no stable row selector
+* no deterministic “scroll row into view”
+* menu trigger not addressable (no test id)
+* virtual list container not being scrolled via test
+
+This is fixable with two minimal, policy-safe changes.
+
+---
+
+# Required fix: make Compare entry-point testable without disabling virtualization
+
+## Option A (preferred): add test IDs + deterministic scroll helper
+
+### 1) Add these attributes in `receipts.tsx` (no UI changes)
+
+* On the virtual list scroll container:
+
+  * `data-testid="receipts-virtual-scroll"`
+* On each row wrapper:
+
+  * `data-testid={"receipt-row-" + receipt.id}`
+* On the actions trigger button:
+
+  * `data-testid={"receipt-actions-" + receipt.id}`
+* On the “Compare…” dropdown item:
+
+  * `data-testid={"receipt-compare-" + receipt.id}`
+
+### 2) Update E2E to scroll to a known row before clicking
+
+In Playwright:
+
+* fetch a receipt id from API (you already do this pattern in other tests)
+* `page.evaluate` to scroll the container until row testid exists
+* then click actions → click compare
+
+This makes the test deterministic and keeps virtualization.
+
+## Option B: add a non-virtualized “test mode”
+
+I don’t recommend it unless you’re desperate, because it introduces conditional behavior:
+
+* `if (MODE === "e2e") disable virtualization`
+  It will pass tests but creates “two UIs.”
+
+Option A is cleaner.
+
+---
+
+# Concrete E2E algorithm (works)
+
+1. `GET /api/receipts/paged?page=1&pageSize=50` using dev key header (your apiFetch already supports)
+2. pick `items[0].receipt_id` as `leftId`
+3. Navigate to `/receipts`
+4. Wait for table header visible
+5. Scroll virtual container to top (ensures first rows render)
+6. Click `[data-testid="receipt-actions-${leftId}"]`
+7. Click `[data-testid="receipt-compare-${leftId}"]`
+8. Assert URL contains `/compare?left=${leftId}`
+9. Fill rightId in compare page, load, assert both IDs present
+
+Because you’re using the first item on page 1, it should render near the top—scrolling is minimal.
+
+---
+
+## Unit tests note
+
+Your spec included compare page unit tests. You didn’t mention adding them. If they’re missing, add a small `compare.test.tsx` with:
+
+* missing params → empty state
+* renders two columns when both queries resolve
+* diff badge appears when values differ
+* Auth banner on 401/403
+
+This is straightforward and increases confidence.
+
+---
+
+## What I need from you (no guessing)
+
+Paste *just* the relevant snippet location in `receipts.tsx` where the virtualized row and actions trigger are rendered (the JSX around row + dropdown trigger). I’ll tell you exactly where to add the `data-testid`s so you don’t disturb layout.
+
+If you’d rather not paste, implement Option A with the 4 test IDs above—then rerun E2E. This will resolve the “virtualization can’t be tested” claim cleanly.

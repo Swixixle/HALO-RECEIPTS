@@ -1,0 +1,77 @@
+Let me explore the current codebase to understand the existing routes, UI, and database schema before building the Proof Spine.
+
+Now let me look at the existing public proof endpoint and the storage interface:
+
+Now let me see the existing proof endpoint fully and the IStorage interface:
+
+Now let me see the full IStorage interface and the audit verify endpoint:
+
+I have a complete picture of the codebase now. Let me plan and build the Proof Spine.
+
+Good plan. Let me build this systematically.
+
+Let me start with Task 1: adding the schema tables, Zod schemas, and storage methods.
+
+Now add the Lantern followup request schema at the end of the schema file:
+
+Now update storage.ts with thread CRUD methods. Let me add the interface methods and implementations:
+
+Now add the thread methods to the IStorage interface:
+
+Now add the implementations at the end of the DatabaseStorage class. Let me find where it ends:
+
+Now push the DB schema:
+
+Schema pushed successfully. Now Task 2 - refactor proof-pack builder and add /api/proofpack/:receiptId:
+
+Now I'll refactor the proof-pack builder into a shared function and create the new /api/proofpack/:receiptId endpoint:
+
+Now add the proof-pack builder function right before the registerRoutes function:
+
+Now refactor the existing /api/public/receipts/:receiptId/proof endpoint to use the shared builder, and add the new /api/proofpack/:receiptId endpoint. Let me find the exact text of the existing proof endpoint:
+
+Now replace the old inline proof-pack builder with the shared function:
+
+Now Task 3 - add the Lantern followup endpoint. Let me find where to add it (near the end of routes, before the httpServer return):
+
+Good. Now let me check for TypeScript errors and verify the server compiles:
+
+The type errors are from Express params being string | string[]. Simple fix:
+
+Clean compile. Now let me restart the app and verify the new endpoints work:
+
+Good, app is running. Now let me build the frontend. Task 4 - update Verify UI to use ProofPack, then Task 5 - create the Lantern page:
+
+Now let me update the Verify UI to use the ProofPack endpoint and show proper badges. The verify page already has most of the structure - I need to update the public mutation to call /api/proofpack/:receiptId and normalize the result display:
+
+Now Task 5 - create the Lantern page and add it to the sidebar. Let me first check the sidebar component:
+
+Now add Lantern to the sidebar and create the Lantern page:
+
+Now create the Lantern page:
+
+Now register the Lantern page in App.tsx:
+
+Now let me verify the TypeScript compiles and run the tests:
+
+TypeScript compiles clean, all 72 tests pass. Let me restart the workflow and update the task list:
+
+Let me update replit.md with the new Proof Spine features, then do the architect review:
+
+Now let me do the final architect review:
+
+Architect review passed. Now let me run the e2e test to validate the Proof Spine features work end-to-end:
+
+All tests passed. Let me mark everything complete:
+
+All tasks completed successfully. Here's a summary of what was built:
+
+Proof Spine v1 -- a unified proof system with three main pieces:
+
+Canonical ProofPack endpoint (/api/proofpack/:receiptId) -- returns a single unified proof pack containing integrity check, signature status, chain verification, and audit trail summary. Both the Verify UI and Lantern consume this contract.
+
+Proof-Gated Lantern -- a conversation feature that only works with cryptographically verified receipts. If a receipt isn't VERIFIED or has its kill switch engaged, questions are blocked with a clear explanation. Conversations are stored as durable threads with the ProofPack snapshot frozen at creation time.
+
+Enhanced Verify UI -- now shows three status badges (HASH, SIGNATURE, AUDIT CHAIN) with audit summary details, working in both private and public lookup modes.
+
+Everything is fully wired: 72/72 tests pass, TypeScript compiles clean, sidebar navigation includes the new Lantern page, and end-to-end testing confirms all features work correctly.

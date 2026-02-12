@@ -7,32 +7,44 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Upload, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Upload, CheckCircle, XCircle, AlertCircle, Shield, Link2, Hash, Play } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { HaloHeader } from "@/components/halo-header";
+import type { ProofPack } from "@shared/schema";
 
-interface VerificationResult {
+const DEMO_RECEIPT_ID = "halo-demo-receipt-001";
+
+interface NormalizedResult {
   verification_status: string;
   hash_match: boolean;
   signature_status: string;
   chain_status: string;
   receipt_id: string;
+  audit_status?: string;
+  audit_total_events?: number;
+  audit_head_hash?: string | null;
 }
 
-interface ProofPackResult {
-  schema: "ai-receipt/proof-pack/1.0";
-  receipt_id: string;
-  verification_status: string;
-  integrity: {
-    hash_match: boolean;
-    computed_hash_sha256: string;
-    expected_hash_sha256: string;
+function normalizeFromVerifyResult(data: any): NormalizedResult {
+  return {
+    verification_status: data.verification_status,
+    hash_match: data.integrity?.hash_match ?? data.hash_match ?? false,
+    signature_status: data.signature?.status ?? data.signature_status ?? "UNKNOWN",
+    chain_status: data.chain?.status ?? data.chain_status ?? "NOT_CHECKED",
+    receipt_id: data.receipt_id,
   };
-  signature: {
-    status: string;
-  };
-  chain: {
-    status: string;
+}
+
+function normalizeFromProofPack(data: ProofPack): NormalizedResult {
+  return {
+    verification_status: data.verification_status,
+    hash_match: data.integrity.hash_match,
+    signature_status: data.signature.status,
+    chain_status: data.chain.status,
+    receipt_id: data.receipt_id,
+    audit_status: data.audit.status,
+    audit_total_events: data.audit.total_events,
+    audit_head_hash: data.audit.head_hash,
   };
 }
 
@@ -41,6 +53,24 @@ export default function Verify() {
   const [receiptId, setReceiptId] = useState("");
   const [publicOnly, setPublicOnly] = useState(false);
   const [error, setError] = useState<{ code: number; message: string } | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  const handleTryDemo = async () => {
+    setDemoLoading(true);
+    setError(null);
+    try {
+      await fetch("/api/demo/seed", { method: "POST" });
+      setPublicOnly(true);
+      setReceiptId(DEMO_RECEIPT_ID);
+      setTimeout(() => {
+        proofPackMutation.mutate(DEMO_RECEIPT_ID);
+      }, 100);
+    } catch {
+      setError({ code: 500, message: "Failed to seed demo receipt" });
+    } finally {
+      setDemoLoading(false);
+    }
+  };
 
   const verifyPrivateMutation = useMutation({
     mutationFn: async (capsule: object) => {
@@ -76,16 +106,16 @@ export default function Verify() {
     },
   });
 
-  const proofPublicMutation = useMutation({
+  const proofPackMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/public/receipts/${encodeURIComponent(id)}/proof`);
+      const res = await fetch(`/api/proofpack/${encodeURIComponent(id)}`);
       if (!res.ok) {
-        const err = new Error("Verification failed") as Error & { status: number; retryAfter?: string };
+        const err = new Error("ProofPack lookup failed") as Error & { status: number; retryAfter?: string };
         err.status = res.status;
         err.retryAfter = res.headers.get("Retry-After") || undefined;
         throw err;
       }
-      return res.json();
+      return res.json() as Promise<ProofPack>;
     },
     onError: (err: Error & { status?: number; retryAfter?: string }) => {
       const status = err.status || 500;
@@ -96,7 +126,7 @@ export default function Verify() {
         const timestamp = retryAfter || new Date(Date.now() + 60000).toISOString();
         setError({ code: 429, message: `Rate limited. Retry after ${timestamp}.` });
       } else {
-        setError({ code: status, message: err.message || "Verification failed" });
+        setError({ code: status, message: err.message || "ProofPack lookup failed" });
       }
     },
     onSuccess: () => {
@@ -111,7 +141,7 @@ export default function Verify() {
         setError({ code: 400, message: "Receipt ID is required" });
         return;
       }
-      proofPublicMutation.mutate(receiptId.trim());
+      proofPackMutation.mutate(receiptId.trim());
     } else {
       try {
         const parsed = JSON.parse(capsuleJson);
@@ -122,7 +152,7 @@ export default function Verify() {
     }
   };
 
-  const isPending = verifyPrivateMutation.isPending || proofPublicMutation.isPending;
+  const isPending = verifyPrivateMutation.isPending || proofPackMutation.isPending;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -148,22 +178,14 @@ export default function Verify() {
     }
   };
 
-  const privateResult = verifyPrivateMutation.data as VerificationResult | undefined;
-  const proofResult = proofPublicMutation.data as ProofPackResult | undefined;
+  const privateResult = verifyPrivateMutation.data;
+  const proofPackResult = proofPackMutation.data;
   
-  const result = privateResult ? {
-    verification_status: privateResult.verification_status,
-    hash_match: privateResult.hash_match,
-    signature_status: privateResult.signature_status,
-    chain_status: privateResult.chain_status,
-    receipt_id: privateResult.receipt_id,
-  } : proofResult ? {
-    verification_status: proofResult.verification_status,
-    hash_match: proofResult.integrity.hash_match,
-    signature_status: proofResult.signature.status,
-    chain_status: proofResult.chain.status,
-    receipt_id: proofResult.receipt_id,
-  } : undefined;
+  const result: NormalizedResult | undefined = privateResult
+    ? normalizeFromVerifyResult(privateResult)
+    : proofPackResult
+      ? normalizeFromProofPack(proofPackResult)
+      : undefined;
 
   return (
     <div>
@@ -179,7 +201,7 @@ export default function Verify() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>{publicOnly ? "Public Proof Lookup" : "Submit Receipt Capsule"}</CardTitle>
+          <CardTitle>{publicOnly ? "ProofPack Lookup" : "Submit Receipt Capsule"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-2 mb-4">
@@ -189,7 +211,7 @@ export default function Verify() {
               onCheckedChange={setPublicOnly}
               data-testid="switch-public-only"
             />
-            <Label htmlFor="public-only">Public proof (receipt id only)</Label>
+            <Label htmlFor="public-only">ProofPack lookup (receipt ID only)</Label>
           </div>
 
           {publicOnly ? (
@@ -243,13 +265,24 @@ export default function Verify() {
             </>
           )}
 
-          <Button
-            onClick={handleVerify}
-            disabled={publicOnly ? !receiptId : !capsuleJson || isPending}
-            data-testid="button-verify"
-          >
-            {isPending ? "Verifying..." : "Verify"}
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              onClick={handleVerify}
+              disabled={publicOnly ? !receiptId : !capsuleJson || isPending}
+              data-testid="button-verify"
+            >
+              {isPending ? "Verifying..." : "Verify"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleTryDemo}
+              disabled={demoLoading || isPending}
+              data-testid="button-try-demo"
+            >
+              <Play className="w-4 h-4 mr-2" />
+              {demoLoading ? "Loading..." : "Try Demo"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -267,7 +300,7 @@ export default function Verify() {
 
       {result && (
         <div className="space-y-4">
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex items-center gap-4 mb-6 flex-wrap">
             <span className="font-semibold">Verification Result:</span>
             {getStatusBadge(result.verification_status)}
           </div>
@@ -276,56 +309,92 @@ export default function Verify() {
             <Card data-testid="card-hash">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                  {result.hash_match ? (
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-destructive" />
-                  )}
+                  <Hash className="w-4 h-4" />
                   Hash
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  {result.hash_match ? "Match" : "Mismatch"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">SHA-256 / c14n-v1</p>
+                <div className="flex items-center gap-2">
+                  {result.hash_match ? (
+                    <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-destructive shrink-0" />
+                  )}
+                  <Badge
+                    className={result.hash_match ? "bg-green-600" : ""}
+                    variant={result.hash_match ? "default" : "destructive"}
+                    data-testid="badge-hash-status"
+                  >
+                    {result.hash_match ? "MATCH" : "FAIL"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">SHA-256 / c14n-v1</p>
               </CardContent>
             </Card>
 
             <Card data-testid="card-signature">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                  {result.signature_status === "VALID" ? (
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                  ) : result.signature_status === "NO_SIGNATURE" ? (
-                    <AlertCircle className="w-4 h-4 text-yellow-600" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-destructive" />
-                  )}
+                  <Shield className="w-4 h-4" />
                   Signature
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">{result.signature_status}</p>
-                <p className="text-xs text-muted-foreground mt-1">Ed25519</p>
+                <div className="flex items-center gap-2">
+                  {result.signature_status === "VALID" ? (
+                    <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                  ) : result.signature_status === "NO_SIGNATURE" || result.signature_status === "UNTRUSTED_ISSUER" ? (
+                    <AlertCircle className="w-4 h-4 text-yellow-600 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-destructive shrink-0" />
+                  )}
+                  <Badge
+                    className={result.signature_status === "VALID" ? "bg-green-600" : result.signature_status === "INVALID" ? "" : "bg-yellow-600"}
+                    variant={result.signature_status === "INVALID" ? "destructive" : "default"}
+                    data-testid="badge-signature-status"
+                  >
+                    {result.signature_status === "NO_SIGNATURE" ? "UNKNOWN" : result.signature_status}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">Ed25519</p>
               </CardContent>
             </Card>
 
             <Card data-testid="card-chain">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                  {result.chain_status === "LINKED" || result.chain_status === "GENESIS" ? (
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                  ) : result.chain_status === "NOT_CHECKED" ? (
-                    <AlertCircle className="w-4 h-4 text-yellow-600" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-destructive" />
-                  )}
-                  Chain
+                  <Link2 className="w-4 h-4" />
+                  Audit Chain
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">{result.chain_status}</p>
+                <div className="flex items-center gap-2">
+                  {result.chain_status === "LINKED" || result.chain_status === "GENESIS" ? (
+                    <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                  ) : result.chain_status === "NOT_CHECKED" ? (
+                    <AlertCircle className="w-4 h-4 text-yellow-600 shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-destructive shrink-0" />
+                  )}
+                  <Badge
+                    className={
+                      result.chain_status === "LINKED" || result.chain_status === "GENESIS"
+                        ? "bg-green-600"
+                        : result.chain_status === "BROKEN"
+                          ? ""
+                          : "bg-yellow-600"
+                    }
+                    variant={result.chain_status === "BROKEN" ? "destructive" : "default"}
+                    data-testid="badge-chain-status"
+                  >
+                    {result.chain_status === "NOT_CHECKED" ? "PARTIAL" : result.chain_status}
+                  </Badge>
+                </div>
+                {result.audit_status && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {result.audit_total_events} events | {result.audit_status}
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>

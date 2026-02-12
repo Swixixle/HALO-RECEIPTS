@@ -89,6 +89,17 @@ MCowBQYDK2VwAyEAr7V4bQ4SLrzJD/pTnE1OFdHxTjyuH8ivnn1WSCP0+r4=
     valid_from: "2024-01-01T00:00:00Z",
     added_at: new Date().toISOString(),
   },
+  {
+    public_key_id: "halo-demo-key-001",
+    public_key_pem: `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAHKz2pYx3ES1ZEPTvMoDaMhM3nErSzc0wT2P1SmBByPY=
+-----END PUBLIC KEY-----`,
+    issuer_id: "test-issuer",
+    issuer_label: "HALO Demo Signing Key",
+    status: "ACTIVE",
+    valid_from: "2024-01-01T00:00:00Z",
+    added_at: new Date().toISOString(),
+  },
 ];
 
 // Trusted issuer IDs

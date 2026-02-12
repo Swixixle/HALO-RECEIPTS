@@ -1,0 +1,207 @@
+Good — if all of that is truly in place, you just upgraded from “audit-grade internally” to **ship-grade externally** (releases + proof artifacts + key rotation story + pilot packet).
+
+Since you’ve already executed items 1–3 and 5, the correct “what next” is **verification + tightening + external anchoring decision**. Here’s the next sprint, in the exact order I’d run it, with hard acceptance criteria.
+
+---
+
+## Sprint A — Make the release mechanically undeniable
+
+### A1) Release reproducibility gate
+
+**Goal:** anyone can rebuild the verifier zip from a tag and byte-compare (or at least hash-compare) to the published artifact.
+
+**Do**
+
+* Add a CI job that:
+
+  * checks out the tag
+  * builds `verifier-vX.Y.Z.zip`
+  * computes SHA-256
+  * compares against the checksum file you publish in the release
+
+**Acceptance**
+
+* CI fails if the rebuilt zip hash ≠ release zip hash.
+
+**If this fails today**
+
+* You likely have nondeterminism from:
+
+  * zip timestamps / ordering
+  * embedding build time
+  * `git describe` vs exact tag
+  * node module resolution differences
+
+Fix: zip with normalized timestamps + stable file ordering (or use `bsdtar`/`zip -X` style flags).
+
+---
+
+### A2) Artifact signing (not just checksums)
+
+Checksums are good; signatures make it “court-friendly.”
+
+**Do (minimal, strong)**
+
+* Sign release artifacts (verifier zip + proof bundle zip + checksums) with **Sigstore Cosign** (keyless OIDC is fine for now).
+
+**Acceptance**
+
+* Release includes `.sig` and/or transparency log verification instructions in `PROOF_BUNDLE.md`.
+
+---
+
+### A3) SBOM + dependency attestation for the verifier bundle
+
+If the verifier is what outsiders execute, you want a clean dependency story even if it’s “single JS file.”
+
+**Do**
+
+* Generate SBOM for the verifier release (CycloneDX or SPDX).
+* If it truly bundles everything, SBOM is tiny — great.
+
+**Acceptance**
+
+* Release includes `SBOM.json` + one command to validate.
+
+---
+
+## Sprint B — Key rotation isn’t real until you prove it
+
+You say “key ring works.” Great. Now you need a **formal rotation proof** that survives a hostile reviewer.
+
+### B1) Rotation proof test
+
+**Do**
+
+* Add a test that generates:
+
+  1. events + checkpoints with `kid=A`
+  2. rotate to `kid=B`
+  3. produce new checkpoints
+  4. export pack including both eras
+  5. offline verifier validates both with a key ring containing both keys
+
+**Acceptance**
+
+* One pack spanning rotation verifies clean.
+* Pack manifest lists `kid` usage correctly.
+* Verifier errors are crisp if a `kid` is missing.
+
+### B2) Threat model + custody procedure: add *failure-mode playbooks*
+
+You added custody/rotation protocol; now add “what if” playbooks.
+
+**Include**
+
+* “Key compromise suspected”
+* “Key lost”
+* “Key rotated incorrectly”
+* “Verifier sees unknown kid”
+
+**Acceptance**
+
+* Every playbook ends with what evidence remains valid and what becomes invalid.
+
+---
+
+## Sprint C — External anchoring MVP: choose a trust domain
+
+You don’t need to pick the perfect anchor. You need to pick a **separate trust boundary** that breaks the “DB superuser rewrites everything” scenario.
+
+### C0) Pick one anchoring target (recommended order)
+
+1. **S3 Object Lock (WORM)**
+
+   * Strong separation if AWS account policies are tight
+   * Practical, not philosophical
+
+2. **RFC3161 TSA timestamp receipts**
+
+   * Great “external time oracle”
+   * Lightweight, strong legal intuitions
+
+3. **Transparency log / append-only public log**
+
+   * Strong, but may introduce “public exposure” concerns
+
+### C1) Define the anchor payload (keep it small)
+
+Anchor exactly:
+
+* `checkpoint_id`
+* `checkpoint_seq`
+* `event_seq`
+* `event_hash`
+* `checkpoint_hash` (or signed payload hash)
+* `engine_id`
+* `audit_payload_version`
+* `kid`
+* `timestamp`
+
+**Acceptance**
+
+* The anchor payload is constant-size and does not include PHI.
+
+### C2) Implement one real anchor backend
+
+You already have an interface + stub. Ship one.
+
+**Acceptance**
+
+* Proof run can optionally:
+
+  * create checkpoints
+  * anchor them externally
+  * export pack that includes anchor receipts
+  * offline verifier can validate anchor receipts (or at least validate their signature/hash chain)
+
+---
+
+## Sprint D — Pilot packet “closing arguments”
+
+Your pilot packet exists; now make it procurement-resistant.
+
+### D1) One-page “Non-goals & boundaries” sheet
+
+Compliance teams scan for *what you refuse to claim*.
+
+**Must include**
+
+* Not semantic truth
+* Not clinical correctness
+* Not PHI storage
+* Not surveillance
+* Not model monitoring (unless you explicitly do)
+
+### D2) Competitive comparison: “what’s closest” without naming vendors aggressively
+
+Frame as categories:
+
+* database audit logs
+* SIEM logs
+* model observability platforms
+* compliance workflow tools
+  …and show exactly where they fail your invariants.
+
+**Acceptance**
+
+* Zero “marketing adjectives.” Only properties.
+
+---
+
+## The only thing I need from you (no repo access required)
+
+Choose the anchoring target for MVP:
+
+* **S3 Object Lock (WORM)**
+* **RFC3161 timestamping**
+* **Other** (tell me what boundary you can actually control)
+
+Once you pick it, I’ll give you:
+
+* the exact anchor payload spec (v1)
+* verifier rules (what must be checked offline)
+* minimum CI gate to enforce “anchored checkpoints exist every N events”
+* failure modes and how they surface in the verifier output
+
+If you want my default: **S3 Object Lock first** (fastest path to “separate trust domain” in real deployments).

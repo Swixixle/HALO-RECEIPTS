@@ -1,0 +1,161 @@
+You’ve now crossed the line from “hardening plan” to **operationally demoable evidence pipeline**. Given what you described, the only thing that really matters next is: **convert the anchoring track from “log-only works” to “real trust-boundary works,” without breaking determinism, and without creating key custody foot-guns.**
+
+Below is the exact next sequence I’d run (no fluff, all leverage).
+
+---
+
+## 0) Reality check: what’s still “paper” vs “steel”
+
+From your summary, the *pipeline* is complete and the *format* is updated to 1.2, but the anchors are currently proven with **log-only** execution in proof runs.
+
+So the remaining gap isn’t architecture—it’s **deployment-grade anchoring**:
+
+* **S3 Object Lock**: real bucket + retention + cross-account policy separation + verified reads
+* **RFC3161**: real TSA endpoint + token verification pinned to trusted TSA cert chain
+
+Everything else is “incremental polish.”
+
+---
+
+## 1) External anchoring MVP: make it a true separate trust boundary
+
+### A. S3 Object Lock (WORM) – what makes it *actually* a trust boundary
+
+To defeat “DB superuser rewrites everything,” your S3 anchor must satisfy:
+
+**Minimum bar**
+
+* Bucket has **Object Lock enabled**
+* Retention enforced (pilot: governance mode acceptable; production: consider compliance mode)
+* **Separate AWS account** (or at minimum, separate IAM boundary) from the DB admin
+* Write role can `PutObject` but cannot shorten retention / delete / overwrite
+
+**What auditors will probe**
+
+* “Can an admin in *this* account still bypass Object Lock?”
+
+  * Governance mode *can* be bypassed by principals with `s3:BypassGovernanceRetention` if allowed.
+  * So the policy must ensure DB-admin-equivalent principals do **not** have bypass capability.
+
+**Your MVP story should be explicit**
+
+* “DB superuser cannot modify S3 anchors; S3 account policy denies bypass. Reconciliation requires collusion.”
+
+### B. RFC3161 TSA – what makes it legally legible
+
+Minimum bar:
+
+* Timestamp token over `anchor_hash`
+* Verifier validates:
+
+  * token signature
+  * token message imprint matches `anchor_hash`
+  * token time is present and parseable
+  * token chain anchors to a pinned TSA root/intermediate (or an allowlisted TSA cert fingerprint set)
+
+**What you don’t need for MVP**
+
+* Fancy multi-TSA quorum
+* OCSP live checks (you can document as “optional online enhancement”)
+
+---
+
+## 2) Proof run: add a “real anchors” mode with hard failure
+
+Right now you can “complete successfully with log-only.” That’s great for dev, but for pilot credibility you want:
+
+* `proof_run --anchors=required`
+
+  * If S3/RFC3161 aren’t configured, the run fails.
+* `proof_run --anchors=optional`
+
+  * Uses log-only fallback (dev ergonomics).
+
+**Acceptance criterion**
+
+* In “required” mode the proof run produces:
+
+  * `anchorReceipts[]` with at least one S3 receipt **and** one TSA receipt per checkpoint (or per N checkpoints—your choice, but document it).
+
+---
+
+## 3) Verifier output: make anchors first-class in the verdict
+
+Don’t bury anchoring under “additional info.” Make it a **separate verdict line**:
+
+* ✅ **Integrity**: chain replay + checkpoint signatures OK
+* ✅/⚠️ **Anchoring**: (S3: present/verified) (TSA: present/verified)
+* ⚠️ **Anchoring coverage**: 3/3 checkpoints anchored (S3+TSA)
+
+And if an anchor is missing:
+
+* Integrity can still be ✅
+* Anchoring becomes ⚠️ and the verifier should say exactly what that means:
+
+  * “DB superuser rewrite resistance is reduced; pack is still internally consistent.”
+
+That’s the “honest operator-grade” posture you’ve been nailing.
+
+---
+
+## 4) Determinism / reproducibility gate: fix the only common trap
+
+You already hit the big gotcha: **ephemeral keys** (or anything timestamped) will break byte-for-byte reproducibility.
+
+The correct pattern is:
+
+* Determinism gate must rebuild **the verifier zip** and compare hashes
+  **without including** any run-specific artifacts (tokens, anchors, proof packs).
+* If you also want determinism for proof bundles, you need:
+
+  * normalized ZIP timestamps
+  * stable file ordering
+  * deterministic key material **only for that gate** (fixture key)
+  * and you must exclude TSA tokens by design (they are time-bound and non-deterministic)
+
+**Recommendation:**
+Keep reproducibility gate focused on the verifier release artifact only. Proof bundles should be **signed + hashed**, not byte-reproducible.
+
+---
+
+## 5) Key management: one more hardening move that pays dividends
+
+If you haven’t already, add these two invariants:
+
+1. **kid must be present in every checkpoint**
+2. Verifier must refuse to “guess” keys:
+
+   * if `kid` missing or unknown → hard fail unless operator provides an explicit override flag
+
+This prevents the most common “silent accept” failure mode during rotations.
+
+---
+
+## 6) What I would do next, in order
+
+If you want the highest ROI next sprint:
+
+1. **Wire “anchors=required” mode** in proof run + CI job that runs it on a configured environment.
+2. **Ship real S3 Object Lock integration** with a minimal, auditable IAM policy example.
+3. **Ship RFC3161 integration** with pinned TSA cert allowlist.
+4. **Add one integration test** that validates verifier behavior when:
+
+   * TSA token missing
+   * S3 receipt missing
+   * mismatched imprint
+5. Update docs:
+
+   * one-page “What external anchoring prevents / does not prevent”
+   * explicit threat-model delta: “DB superuser now requires collusion with anchor boundary.”
+
+---
+
+## One question I do need answered (but I’ll give you the default)
+
+**Do you want the S3 Object Lock anchor to be in a separate AWS account from day 1 of the pilot?**
+
+If you don’t answer, default to:
+
+* **Yes** (separate account) for the strongest “separate trust boundary” claim, even if the pilot uses a simple consolidated billing setup.
+
+If you reply with your constraints (AWS/no AWS, pilot timeline, who controls accounts), I’ll give you the exact minimal IAM + bucket policy shape and the verifier expectations to match.

@@ -1,0 +1,163 @@
+Good. Then the most powerful next move is:
+
+## Build **Proof Spine v1** inside that existing Replit app (and make Lantern proof-gated)
+
+You already have verify UI + `/api/public/receipts/:id/proof`. So we do **not** branch into a new architecture. We turn what you have into a **single, defensible spine** that every other module hangs off.
+
+### Do this in exactly this order
+
+## 0) Duplicate the repl (30 seconds, no thinking)
+
+In Replit: **⋯ → Duplicate**
+Name it: `proof-spine-v1` (or `HALO-Spine-v1`)
+
+This gives you a safe “surgery copy” and stops fear from slowing you down.
+
+---
+
+## 1) Make one canonical endpoint: **ProofPack v1**
+
+You already have `public proof`—now we standardize it as the **one JSON contract** the UI and Lantern both consume.
+
+Create endpoint (or alias existing one):
+
+* `GET /api/proofpack/:receiptId`
+
+**It returns:**
+
+* receipt metadata (id, createdAt, algs)
+* integrity checks (hash match, signature status, chain status)
+* *optional* minimal audit summary (head hash, events count)
+* **no transcript content**
+
+**Output shape (example):**
+
+```json
+{
+  "receipt_id": "r_123",
+  "integrity": {
+    "hash_match": true,
+    "signature_status": "valid",
+    "chain_status": "linked"
+  },
+  "audit": {
+    "total_events": 24,
+    "head_hash": "abc..."
+  },
+  "artifacts": {
+    "proof_url": "/api/proofpack/r_123"
+  }
+}
+```
+
+**Rule:** everything else consumes *this*, not bespoke endpoints.
+
+---
+
+## 2) Update Verify UI to read only ProofPack
+
+Verify screen should call **only** `/api/proofpack/:id` and render the three badges:
+
+* **HASH: MATCH / FAIL**
+* **SIGNATURE: VALID / INVALID / UNKNOWN**
+* **AUDIT CHAIN: LINKED / BROKEN / PARTIAL**
+
+This collapses UX + API drift immediately.
+
+---
+
+## 3) Make Lantern proof-gated (this is the “whole project” power move)
+
+Add:
+
+* `POST /api/lantern/followup`
+* Inputs: `{ threadId, receiptId, userText }`
+
+Server flow:
+
+1. Call ProofPack for `receiptId`
+2. If not **VERIFIED**, return a refusal payload:
+
+   * `status: "blocked"`
+   * `reason: "Proof not VERIFIED"`
+   * include integrity details from proofpack
+3. If VERIFIED, then Lantern is allowed to answer
+4. Store `{ threadId, receiptId, proofpack_snapshot, messages[] }` in DB
+
+**This is the glue** between HALO (proof) and Lantern (interpretation).
+ELI will later plug in as “imaging/analysis outputs” that also must attach to VERIFIED receipts.
+
+---
+
+## 4) One DB table to unify threads across everything
+
+Add a durable table (SQLite/Postgres depending on your repl):
+
+* `threads`
+
+  * `thread_id` (pk)
+  * `receipt_id`
+  * `proofpack_json` (snapshot at time of first verified use)
+  * `created_at`
+
+* `thread_messages`
+
+  * `id`
+  * `thread_id`
+  * `role` (user/assistant/system)
+  * `content`
+  * `created_at`
+
+Now you have durable continuity and an audit surface.
+
+---
+
+# What project should you have open?
+
+**The duplicated Replit project** (`proof-spine-v1`).
+That’s the surgical environment where we implement ProofPack + proof-gated Lantern without risking the working demo.
+
+---
+
+# GitHub connection (do this after Proof Spine boots)
+
+Once Proof Spine is working, connect the duplicated repl to GitHub:
+
+### If you want GitHub to be canonical for the runtime app
+
+* Replit Git panel → **Connect to GitHub** → **Create new repo from this repl**
+  Name it something like:
+* `halo-spine` or `halo-demo-runtime`
+
+Keep `HALO-RECEIPTS` as the “reference verification kit” repo.
+
+This prevents mixing “runtime demo app” with “canonical spec + scripts” in one repo.
+
+---
+
+# The single most powerful deliverable you’ll have after this
+
+A reviewer can do:
+
+1. Enter receipt ID → see proof badges (no PHI exposure)
+2. Click “Ask Lantern” → Lantern answers **only if VERIFIED**
+3. Audit chain exists behind the scenes proving tamper-evident ops
+
+That’s a complete, defensible product loop.
+
+---
+
+## Your immediate next action (no ambiguity)
+
+1. Duplicate the Replit project → open the duplicate.
+2. Tell me the **file names** where:
+
+   * API routes live (e.g., `server/routes.ts` or `src/routes.ts`)
+   * Verify UI component lives (e.g., `client/pages/Verify.tsx`)
+
+Then I’ll give you a **surgical, line-level edit plan** (exact code blocks + where to paste) for:
+
+* `/api/proofpack/:receiptId`
+* proof-gated `/api/lantern/followup`
+* DB tables + storage helpers
+* Verify UI wiring to ProofPack

@@ -1,0 +1,112 @@
+Got it — that sprint log is exactly the kind of “courtroom-readable” completion record you want. The important thing is: you didn’t just “add anchoring,” you **closed the operational loopholes** (required mode, strict kid, verifier verdict semantics, offline-friendly evidence, and failure-mode tests). That’s the difference between a feature and a trust boundary.
+
+Here’s what I’d do next to convert this from “implemented + tested” into **pilot-ready + auditor-ready** with minimal additional engineering.
+
+---
+
+## 1) Make the pilot *actually runnable* in a separate AWS anchor account
+
+You now have the abstraction and the docs. The next step is provisioning + a single “known good” reference setup.
+
+### Deliverables to add (P0)
+
+* **`docs/PILOT_SETUP_AWS_ANCHOR_ACCOUNT.md`**
+
+  * Step-by-step: create anchor AWS account → create Object Lock bucket → retention config → IAM roles/policies → test put → test verify read.
+* **`scripts/anchor_smoke.ts`** (or bash)
+
+  * Writes one anchor object to S3, reads it back, checks object hash, prints “PASS/FAIL”.
+
+### Why this matters
+
+Your code can be perfect and you’ll still lose pilots if the setup is ambiguous. A deterministic smoke script prevents “it didn’t work” meetings.
+
+---
+
+## 2) RFC3161 TSA: pick one pilot TSA and pin it
+
+You already implemented cert-fingerprint pinning. Now you need **one** canonical config that works.
+
+### Deliverables (P0)
+
+* **`docs/TSA_PROVIDERS.md`** (pilot-focused)
+
+  * “We tested against X TSA. Here’s the exact endpoint, the pinned fingerprint(s), and expected verifier outputs.”
+* **`scripts/tsa_smoke.ts`**
+
+  * Requests one token for a known anchor hash and verifies it offline using the pinned allowlist.
+
+### Why this matters
+
+TSA failures are usually operational (cert rotation, chain mismatch, wrong endpoint). A smoke script gives you quick diagnosis.
+
+---
+
+## 3) CI: split “deterministic build” vs “time-bound proof bundle”
+
+You’ve added a lot of tests (72) and new runtime evidence modes. Make CI outcomes crisp:
+
+### Recommended CI structure
+
+* **Job A — Determinism gate**: rebuild verifier zip, compare SHA-256
+* **Job B — Test gate**: run all tests
+* **Job C — Proof bundle**:
+
+  * only runs in an environment where anchors are available
+  * runs `--anchors=required`
+  * uploads proof artifacts
+
+### Why this matters
+
+It prevents people from confusing “verifier reproducibility” with “proof bundle reproducibility” (which can never be fully deterministic because TSA is time-based).
+
+---
+
+## 4) Operator packet: add one page that kills the predictable objections
+
+You already created EXTERNAL_ANCHORING.md. Now add the “objection killer” one-pager:
+
+### Add: `docs/OBJECTIONS_AND_PRECISE_ANSWERS.md`
+
+Include answers to:
+
+* “Does this prove the model was correct?” → **No. It proves what happened.**
+* “Can an admin still rewrite?” → **Only by compromising external trust boundary (S3/TSA).**
+* “What if keys rotate?” → **kid + key ring + strict-kid; verifier refuses to guess.**
+* “What if anchors are down?” → **required mode hard-fails; optional mode is explicitly marked.**
+* “Can we validate offline?” → **Yes — pack contains what is needed for offline verification.**
+
+This becomes the CMO / GC “fast read.”
+
+---
+
+## 5) One “pilot runbook” that ties everything together
+
+Add a single page that describes the pilot flow from fresh clone to verified proof:
+
+### Add: `docs/PILOT_RUNBOOK.md`
+
+Sections:
+
+1. Preconditions (DB, API key, anchor creds, TSA pin list)
+2. Run proof in required mode
+3. Export forensic pack
+4. Verify offline pack (strict kid)
+5. Interpret verifier output (what PASS means / doesn’t mean)
+
+---
+
+## 6) What I’d do immediately next (lowest effort, highest payoff)
+
+If you want the tightest next sprint with near-zero risk:
+
+1. **Anchor AWS account setup doc + smoke script**
+2. **TSA smoke script + one tested TSA config**
+3. **CI split (determinism vs proof artifacts)**
+4. **Pilot runbook**
+
+That’s the shortest path to “someone else can run this without you on the call.”
+
+---
+
+If you want to keep momentum: paste the current names/paths of your anchor modules + proof_run entrypoint + where configs live (env vars / config files). I’ll give you a concrete file-by-file checklist for those P0 docs/scripts that matches your repo’s exact structure and naming conventions.

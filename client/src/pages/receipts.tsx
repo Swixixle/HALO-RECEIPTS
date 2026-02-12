@@ -18,13 +18,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  Table,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -41,64 +34,24 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ShieldCheck, ShieldAlert, ShieldX, Lock, Unlock, Search,
   MoreHorizontal, Eye, ExternalLink, Download, AlertTriangle,
   FileText, ArrowUpDown, RotateCcw, Copy, Check, RefreshCw, Clock,
-  ChevronLeft, ChevronRight, Package, Loader2
+  ChevronLeft, ChevronRight, Package, Loader2, Bookmark, BookmarkPlus,
+  Settings2, Trash2, GitCompareArrows
 } from "lucide-react";
 import { AuthRequiredBanner, isAuthError } from "@/components/auth-required-banner";
 import { useToast } from "@/hooks/use-toast";
-import type { Receipt } from "@shared/schema";
-
-interface ForensicsFlags {
-  pii: boolean;
-  piiCount: number;
-  risk: boolean;
-  riskCount: number;
-  anom: boolean;
-  anomCount: number;
-}
-
-function parseForensics(forensicsJson: string | null | undefined): ForensicsFlags | null {
-  if (!forensicsJson) return null;
-  try {
-    const f = typeof forensicsJson === "object" ? forensicsJson : JSON.parse(forensicsJson);
-
-    const piiFields = ["email_like_count", "phone_like_count", "ssn_like_count", "dob_like_count", "mrn_like_count", "ip_like_count"];
-    let piiCount = 0;
-    if (f.pii_heuristics) {
-      for (const k of piiFields) {
-        piiCount += (f.pii_heuristics[k] || 0);
-      }
-    }
-
-    const riskCategories = ["instructional", "medical", "legal", "financial", "self_harm"];
-    let riskCount = 0;
-    if (f.risk_keywords) {
-      for (const k of riskCategories) {
-        if (f.risk_keywords[k]?.present) riskCount++;
-      }
-    }
-
-    const anomCount = Array.isArray(f.anomalies) ? f.anomalies.length : 0;
-
-    return {
-      pii: piiCount > 0,
-      piiCount,
-      risk: riskCount > 0,
-      riskCount,
-      anom: anomCount > 0,
-      anomCount,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function hasAnyForensicsFlags(flags: ForensicsFlags | null): boolean {
-  if (!flags) return false;
-  return flags.pii || flags.risk || flags.anom;
-}
+import type { Receipt, SavedViewFilters } from "@shared/schema";
+import { parseForensics, hasAnyForensicsFlags, type ForensicsFlags } from "@/lib/forensics";
 
 interface PagedResponse {
   items: Receipt[];
@@ -110,6 +63,7 @@ interface PagedResponse {
 
 const ROW_HEIGHT = 48;
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
+const GRID_COLS = "200px 120px 110px 110px 120px 80px 100px 60px";
 
 function buildPagedUrl(params: {
   page: number;
@@ -149,6 +103,11 @@ export default function Receipts() {
   const [pendingExportBody, setPendingExportBody] = useState<Record<string, unknown> | null>(null);
   const [activeExportId, setActiveExportId] = useState<string | null>(null);
   const [exportPolling, setExportPolling] = useState(false);
+  const [saveViewOpen, setSaveViewOpen] = useState(false);
+  const [manageViewsOpen, setManageViewsOpen] = useState(false);
+  const [viewName, setViewName] = useState("");
+  const [viewDescription, setViewDescription] = useState("");
+  const [viewNameError, setViewNameError] = useState("");
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -188,6 +147,104 @@ export default function Receipts() {
     }
     return map;
   }, [items]);
+
+  interface SavedViewResponse {
+    id: string;
+    name: string;
+    description: string | null;
+    filters: SavedViewFilters;
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  const savedViewsQuery = useQuery<{ items: SavedViewResponse[] }>({
+    queryKey: ["/api/saved-views"],
+  });
+
+  const savedViews = savedViewsQuery.data?.items ?? [];
+
+  const saveViewMutation = useMutation({
+    mutationFn: async (body: { name: string; description?: string | null; filters: SavedViewFilters }) => {
+      const res = await apiFetch("/api/saved-views", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (res.status === 409 && json.error === "NAME_EXISTS") {
+        throw new Error("NAME_EXISTS");
+      }
+      if (!res.ok) throw new Error(json.error || "Failed to save view");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saved-views"] });
+      setSaveViewOpen(false);
+      setViewName("");
+      setViewDescription("");
+      setViewNameError("");
+      toast({ title: "Saved view created" });
+    },
+    onError: (err: Error) => {
+      if (err.message === "NAME_EXISTS") {
+        setViewNameError("A view with this name already exists");
+      } else {
+        toast({ title: "Failed to save view", variant: "destructive" });
+      }
+    },
+  });
+
+  const deleteViewMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiFetch(`/api/saved-views/${id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to delete");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saved-views"] });
+      toast({ title: "Saved view deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete view", variant: "destructive" });
+    },
+  });
+
+  const applyView = useCallback((view: SavedViewResponse) => {
+    const f = view.filters;
+    setStatusFilter(f.status ?? "all");
+    setSearchQuery(f.q ?? "");
+    setDebouncedSearch(f.q ?? "");
+    setForensicsOnly(f.hasForensics ?? false);
+    setKillSwitchOnly(f.killSwitch ?? false);
+    if (f.pageSize) setPageSize(f.pageSize);
+    setPage(1);
+    apiRequest("POST", `/api/saved-views/${view.id}/apply`).catch(() => {});
+    toast({ title: `Applied view: ${view.name}` });
+  }, [toast]);
+
+  const handleSaveView = useCallback(() => {
+    const name = viewName.trim();
+    if (!name) {
+      setViewNameError("Name is required");
+      return;
+    }
+    if (name.length > 64) {
+      setViewNameError("Name must be 64 characters or less");
+      return;
+    }
+    setViewNameError("");
+    const filters: SavedViewFilters = {
+      status: statusFilter !== "all" ? statusFilter as any : null,
+      q: debouncedSearch.trim() || null,
+      hasForensics: forensicsOnly || null,
+      killSwitch: killSwitchOnly || null,
+      pageSize: pageSize as 50 | 100 | 200,
+    };
+    saveViewMutation.mutate({
+      name,
+      description: viewDescription.trim() || null,
+      filters,
+    });
+  }, [viewName, viewDescription, statusFilter, debouncedSearch, forensicsOnly, killSwitchOnly, pageSize, saveViewMutation]);
 
   const bulkExportMutation = useMutation({
     mutationFn: async (body: { scope: "current_page" | "all_results"; page?: number; pageSize?: number; status?: string; q?: string; hasForensics?: boolean; killSwitch?: boolean; confirm?: boolean }) => {
@@ -475,6 +532,57 @@ export default function Receipts() {
           >
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="button-saved-views"
+              >
+                <Bookmark className="h-4 w-4 mr-1" />
+                Views
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {savedViews.length === 0 && (
+                <div className="px-3 py-2 text-sm text-muted-foreground" data-testid="text-no-views">
+                  No saved views yet
+                </div>
+              )}
+              {savedViews.map((view) => (
+                <DropdownMenuItem
+                  key={view.id}
+                  onClick={() => applyView(view)}
+                  data-testid={`action-apply-view-${view.id}`}
+                >
+                  <Bookmark className="h-4 w-4 mr-2 shrink-0" />
+                  <span className="truncate">{view.name}</span>
+                </DropdownMenuItem>
+              ))}
+              <div className="border-t my-1" />
+              <DropdownMenuItem
+                onClick={() => {
+                  setViewName("");
+                  setViewDescription("");
+                  setViewNameError("");
+                  setSaveViewOpen(true);
+                }}
+                data-testid="action-save-current-view"
+              >
+                <BookmarkPlus className="h-4 w-4 mr-2" />
+                Save current view...
+              </DropdownMenuItem>
+              {savedViews.length > 0 && (
+                <DropdownMenuItem
+                  onClick={() => setManageViewsOpen(true)}
+                  data-testid="action-manage-views"
+                >
+                  <Settings2 className="h-4 w-4 mr-2" />
+                  Manage views...
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {data && items.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -623,148 +731,146 @@ export default function Receipts() {
       ) : (
         <Card>
           <div className="overflow-x-auto">
-            <Table data-testid="receipts-table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead data-testid="col-receipt-id">Receipt ID</TableHead>
-                  <TableHead data-testid="col-result">Result</TableHead>
-                  <TableHead data-testid="col-signature">Signature</TableHead>
-                  <TableHead data-testid="col-chain">Chain</TableHead>
-                  <TableHead data-testid="col-forensics">Forensics</TableHead>
-                  <TableHead data-testid="col-kill-switch">Kill Switch</TableHead>
-                  <TableHead data-testid="col-created">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-auto p-0 font-medium"
-                      onClick={() => {
-                        setSortOrder(o => o === "desc" ? "asc" : "desc");
-                        setPage(1);
-                      }}
-                    >
-                      Created
-                      <ArrowUpDown className="h-3 w-3 ml-1" />
-                    </Button>
-                  </TableHead>
-                  <TableHead data-testid="col-actions">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-            </Table>
+            <div
+              data-testid="receipts-table"
+              role="table"
+              style={{ display: "grid", gridTemplateColumns: GRID_COLS }}
+              className="text-sm border-b"
+            >
+              <div role="columnheader" data-testid="col-receipt-id" className="px-3 py-2 font-medium text-muted-foreground">Receipt ID</div>
+              <div role="columnheader" data-testid="col-result" className="px-3 py-2 font-medium text-muted-foreground">Result</div>
+              <div role="columnheader" data-testid="col-signature" className="px-3 py-2 font-medium text-muted-foreground">Signature</div>
+              <div role="columnheader" data-testid="col-chain" className="px-3 py-2 font-medium text-muted-foreground">Chain</div>
+              <div role="columnheader" data-testid="col-forensics" className="px-3 py-2 font-medium text-muted-foreground">Forensics</div>
+              <div role="columnheader" data-testid="col-kill-switch" className="px-3 py-2 font-medium text-muted-foreground">Kill Switch</div>
+              <div role="columnheader" data-testid="col-created" className="px-3 py-2 font-medium text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto p-0 font-medium"
+                  onClick={() => {
+                    setSortOrder(o => o === "desc" ? "asc" : "desc");
+                    setPage(1);
+                  }}
+                >
+                  Created
+                  <ArrowUpDown className="h-3 w-3 ml-1" />
+                </Button>
+              </div>
+              <div role="columnheader" data-testid="col-actions" className="px-3 py-2 font-medium text-muted-foreground">Actions</div>
+            </div>
           </div>
           <div
             ref={tableContainerRef}
             className="overflow-auto"
-            style={{ maxHeight: "calc(100vh - 380px)" }}
+            style={{ maxHeight: "calc(100vh - 380px)", minHeight: "200px" }}
             data-testid="virtual-scroll-container"
           >
             <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: "relative" }}>
-              <Table>
-                <colgroup>
-                  <col style={{ width: "200px" }} />
-                  <col style={{ width: "120px" }} />
-                  <col style={{ width: "110px" }} />
-                  <col style={{ width: "110px" }} />
-                  <col style={{ width: "120px" }} />
-                  <col style={{ width: "80px" }} />
-                  <col style={{ width: "100px" }} />
-                  <col style={{ width: "60px" }} />
-                </colgroup>
-                <tbody>
-                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                    const receipt = items[virtualRow.index];
-                    const flags = forensicsCache.get(receipt.id) ?? null;
-                    return (
-                      <TableRow
-                        key={receipt.id}
-                        className="cursor-pointer hover-elevate"
-                        onClick={() => navigate(`/receipts/${receipt.receiptId}`)}
-                        data-testid={`row-receipt-${receipt.receiptId}`}
-                        style={{
-                          height: `${virtualRow.size}px`,
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <TableCell className="font-mono text-xs max-w-[200px]">
-                          <div className="flex items-center gap-1">
-                            <span className="truncate" data-testid={`text-id-${receipt.receiptId}`}>{receipt.receiptId}</span>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6 shrink-0"
-                              onClick={(e) => copyId(receipt.receiptId, e)}
-                              data-testid={`button-copy-${receipt.receiptId}`}
-                            >
-                              {copiedId === receipt.receiptId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell>{getVerificationBadge(receipt.verificationStatus)}</TableCell>
-                        <TableCell>{getSignatureBadge(receipt.signatureStatus)}</TableCell>
-                        <TableCell>{getChainBadge(receipt.chainStatus)}</TableCell>
-                        <TableCell>{renderForensicsFlags(flags)}</TableCell>
-                        <TableCell>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span data-testid={`kill-switch-${receipt.receiptId}`}>
-                                {receipt.hindsightKillSwitch === 1 ? (
-                                  <Lock className="h-4 w-4 text-destructive" />
-                                ) : (
-                                  <Unlock className="h-4 w-4 text-muted-foreground" />
-                                )}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {receipt.hindsightKillSwitch === 1 ? "Kill switch engaged" : "Kill switch off"}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {receipt.createdAt ? new Date(receipt.createdAt).toLocaleDateString() : "\u2014"}
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Button size="icon" variant="ghost" data-testid={`button-actions-${receipt.receiptId}`}>
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={(e) => { e.stopPropagation(); navigate(`/receipts/${receipt.receiptId}`); }}
-                                data-testid={`action-view-${receipt.receiptId}`}
-                              >
-                                <Eye className="h-4 w-4 mr-2" />
-                                View
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  window.open(`/api/public/receipts/${encodeURIComponent(receipt.receiptId)}/proof`, "_blank");
-                                }}
-                                data-testid={`action-proof-${receipt.receiptId}`}
-                              >
-                                <ExternalLink className="h-4 w-4 mr-2" />
-                                Proof
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => handleExportClick(receipt.receiptId, e)}
-                                data-testid={`action-export-${receipt.receiptId}`}
-                              >
-                                <Download className="h-4 w-4 mr-2" />
-                                Export
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </tbody>
-              </Table>
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const receipt = items[virtualRow.index];
+                const flags = forensicsCache.get(receipt.id) ?? null;
+                return (
+                  <div
+                    key={receipt.id}
+                    role="row"
+                    className="cursor-pointer hover-elevate border-b"
+                    onClick={() => navigate(`/receipts/${receipt.receiptId}`)}
+                    data-testid={`row-receipt-${receipt.receiptId}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: GRID_COLS,
+                      alignItems: "center",
+                      height: `${virtualRow.size}px`,
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    <div role="cell" className="px-3 font-mono text-xs overflow-hidden">
+                      <div className="flex items-center gap-1">
+                        <span className="truncate" data-testid={`text-id-${receipt.receiptId}`}>{receipt.receiptId}</span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 shrink-0"
+                          onClick={(e) => copyId(receipt.receiptId, e)}
+                          data-testid={`button-copy-${receipt.receiptId}`}
+                        >
+                          {copiedId === receipt.receiptId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div role="cell" className="px-3">{getVerificationBadge(receipt.verificationStatus)}</div>
+                    <div role="cell" className="px-3">{getSignatureBadge(receipt.signatureStatus)}</div>
+                    <div role="cell" className="px-3">{getChainBadge(receipt.chainStatus)}</div>
+                    <div role="cell" className="px-3">{renderForensicsFlags(flags)}</div>
+                    <div role="cell" className="px-3">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span data-testid={`kill-switch-${receipt.receiptId}`}>
+                            {receipt.hindsightKillSwitch === 1 ? (
+                              <Lock className="h-4 w-4 text-destructive" />
+                            ) : (
+                              <Unlock className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {receipt.hindsightKillSwitch === 1 ? "Kill switch engaged" : "Kill switch off"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <div role="cell" className="px-3 text-xs text-muted-foreground whitespace-nowrap">
+                      {receipt.createdAt ? new Date(receipt.createdAt).toLocaleDateString() : "\u2014"}
+                    </div>
+                    <div role="cell" className="px-3">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button size="icon" variant="ghost" data-testid={`button-actions-${receipt.receiptId}`}>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={(e) => { e.stopPropagation(); navigate(`/receipts/${receipt.receiptId}`); }}
+                            data-testid={`action-view-${receipt.receiptId}`}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`/api/public/receipts/${encodeURIComponent(receipt.receiptId)}/proof`, "_blank");
+                            }}
+                            data-testid={`action-proof-${receipt.receiptId}`}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            Proof
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => handleExportClick(receipt.receiptId, e)}
+                            data-testid={`action-export-${receipt.receiptId}`}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Export
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => { e.stopPropagation(); navigate(`/compare?left=${encodeURIComponent(receipt.receiptId)}`); }}
+                            data-testid={`action-compare-${receipt.receiptId}`}
+                          >
+                            <GitCompareArrows className="h-4 w-4 mr-2" />
+                            Compare...
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -830,6 +936,103 @@ export default function Receipts() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={saveViewOpen} onOpenChange={(open) => { if (!open) { setSaveViewOpen(false); setViewNameError(""); } }}>
+        <DialogContent data-testid="dialog-save-view">
+          <DialogHeader>
+            <DialogTitle data-testid="text-save-view-title">Save Current View</DialogTitle>
+            <DialogDescription>
+              Save the current filter settings as a named view for quick access.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label htmlFor="view-name" className="text-sm font-medium">Name</Label>
+              <Input
+                id="view-name"
+                value={viewName}
+                onChange={(e) => { setViewName(e.target.value); setViewNameError(""); }}
+                placeholder="e.g. Verified with PII"
+                maxLength={64}
+                data-testid="input-view-name"
+              />
+              {viewNameError && (
+                <p className="text-sm text-destructive mt-1" data-testid="text-view-name-error">{viewNameError}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="view-description" className="text-sm font-medium">Description (optional)</Label>
+              <Input
+                id="view-description"
+                value={viewDescription}
+                onChange={(e) => setViewDescription(e.target.value)}
+                placeholder="Brief description..."
+                maxLength={200}
+                data-testid="input-view-description"
+              />
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>Current filters that will be saved:</p>
+              <ul className="list-disc pl-4">
+                {statusFilter !== "all" && <li>Status: {statusFilter}</li>}
+                {debouncedSearch && <li>Search: {debouncedSearch}</li>}
+                {forensicsOnly && <li>Forensics only</li>}
+                {killSwitchOnly && <li>Kill switch only</li>}
+                <li>Page size: {pageSize}</li>
+                {!hasActiveFilters && statusFilter === "all" && <li>No filters (shows all receipts)</li>}
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveViewOpen(false)} data-testid="button-cancel-save-view">Cancel</Button>
+            <Button
+              onClick={handleSaveView}
+              disabled={saveViewMutation.isPending}
+              data-testid="button-confirm-save-view"
+            >
+              {saveViewMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <BookmarkPlus className="h-4 w-4 mr-1" />}
+              Save View
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={manageViewsOpen} onOpenChange={setManageViewsOpen}>
+        <DialogContent data-testid="dialog-manage-views">
+          <DialogHeader>
+            <DialogTitle data-testid="text-manage-views-title">Manage Saved Views</DialogTitle>
+            <DialogDescription>
+              Delete saved views you no longer need.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2 max-h-64 overflow-y-auto">
+            {savedViews.map((view) => (
+              <div key={view.id} className="flex items-center justify-between gap-2 p-2 rounded-md border" data-testid={`manage-view-${view.id}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate" data-testid={`text-view-name-${view.id}`}>{view.name}</p>
+                  {view.description && (
+                    <p className="text-xs text-muted-foreground truncate">{view.description}</p>
+                  )}
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => deleteViewMutation.mutate(view.id)}
+                  disabled={deleteViewMutation.isPending}
+                  data-testid={`button-delete-view-${view.id}`}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+            {savedViews.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-views-manage">
+                No saved views to manage.
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!bulkExportConfirm} onOpenChange={(open) => { if (!open) setBulkExportConfirm(null); }}>
         <AlertDialogContent data-testid="dialog-bulk-export-confirm">

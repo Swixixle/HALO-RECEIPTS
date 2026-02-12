@@ -1,0 +1,105 @@
+You’re right: **embedding `_v: 1` inside the hashed payload already gives you cryptographic version binding**. A separate `payload_v` column is **not required for integrity**.
+
+The column is purely an **operational/indexing affordance**:
+
+* **Why it’s still useful**
+
+  * Lets you **route verification** without reconstructing/parsing payloads (or without inspecting `data` at all).
+  * Enables **fast mixed-version scans** (“verify all v0 first, then v1”) and targeted maintenance queries.
+  * Makes dashboards and forensic tooling easier (“show me all legacy v0 rows”).
+
+* **Why it’s potentially risky**
+
+  * It introduces a “second truth” that could drift if you don’t enforce consistency.
+  * (Minor) extra storage/index cost.
+
+If you add it, the right pattern is: **treat `payload_v` as an optimization hint**, and enforce it with a consistency check so it can’t become a foot-gun.
+
+---
+
+## If we add `payload_v`, do it this way
+
+### 1) DB schema: `payload_v INT NOT NULL DEFAULT 1`
+
+**SQLite**
+
+```sql
+ALTER TABLE audit_events ADD COLUMN payload_v INTEGER NOT NULL DEFAULT 1;
+```
+
+**Postgres**
+
+```sql
+ALTER TABLE audit_events ADD COLUMN payload_v integer NOT NULL DEFAULT 1;
+```
+
+If you expect lots of rows and will query by version:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_audit_events_payload_v ON audit_events(payload_v);
+```
+
+### 2) Append: set `payload_v` from the builder used
+
+Since your builder is literally `auditPayloadV1`, this is trivial:
+
+* Always write `payload_v: 1` (until you ship v2)
+* If you ever introduce v2, `appendAuditEvent` sets `payload_v: 2` when it uses `auditPayloadV2`
+
+### 3) Verify: use `payload_v` to select the correct builder **and** cross-check `_v`
+
+This is the key “no drift” rule.
+
+Pseudo-logic:
+
+* Choose builder by `row.payload_v`:
+
+  * `1 → auditPayloadV1`
+  * `2 → auditPayloadV2` (future)
+* Builder returns payload containing `_v`
+* Assert `payload._v === row.payload_v`
+
+  * If mismatch: fail with `reason: "version_mismatch"` (or fold into `hash_mismatch` with a clearer `detail`)
+
+This makes the DB column **self-auditing**: it cannot lie without detection.
+
+### 4) Migration/backfill
+
+Because your `_v` is not stored as a full payload JSON (you reconstruct payload from columns), you don’t “parse” anything to backfill — you just default to `1` for all existing rows *that were produced by v1*.
+
+If you *already* had rows from before `_v` existed (true v0 history), then:
+
+* Either set `payload_v DEFAULT 0` and explicitly write `1` going forward, or
+* If you wiped the chain when you introduced `_v`, then all rows are v1 and you can safely default to `1`.
+
+Given your current state (“fresh/genesis, early dev”), **DEFAULT 1** is sane.
+
+---
+
+## What I’d do next (more valuable than `payload_v`, if you’re prioritizing)
+
+If your goal is “reviewers can’t trash this,” the next real upgrade after strict canonicalization is **checkpoint anchoring**:
+
+1. **Signed checkpoint rows** (same DB, different table or special audit_event type)
+
+   * Every N events (or every X minutes), write an “ANCHOR” event whose payload includes:
+
+     * head seq/hash
+     * timestamp
+     * signer id
+     * Ed25519 signature over the checkpoint payload
+
+2. **Optional external sink**
+
+   * Write the checkpoint to a WORM-ish destination (object storage w/ retention, or even a separate append-only log).
+
+This is the clean escalation step from “tamper-evident inside DB” to “tamper-evident even if DB admin is malicious.”
+
+---
+
+## Recommendation
+
+* Add `payload_v` **only if** you want to support **mixed-version verification** or want easy querying/ops tooling. It’s a clean, low-risk add **if** you enforce the `_v === payload_v` invariant during verify.
+* Otherwise, the higher-leverage next step is **signed checkpoints**.
+
+If you tell me whether your DB is **SQLite vs Postgres** in that Replit project, I’ll give you the exact Drizzle `schema.ts` diff + the minimal code edits in `server/storage.ts` (append + verify) in your repo’s naming conventions.

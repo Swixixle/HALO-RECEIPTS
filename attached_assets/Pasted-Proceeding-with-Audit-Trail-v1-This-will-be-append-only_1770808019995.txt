@@ -1,0 +1,304 @@
+Proceeding with **Audit Trail v1**.
+
+This will be **append-only**, **server-authenticated**, **low surface area**, and it won’t change any existing semantics (exports, saved views, compare, receipts). It just records operator actions in a durable log.
+
+---
+
+# Audit Trail v1 — STRICT SPEC
+
+## Goals
+
+1. Record key operator actions as **immutable events**
+2. Provide a **read-only UI** for recent events
+3. Enable future “evidence of governance” without building identity/auth v2 yet
+
+## Non-goals
+
+* No user accounts / RBAC
+* No edits/deletes of audit events
+* No “truth claims” or interpretation
+
+---
+
+# Data model
+
+## New table: `audit_events`
+
+Add to `shared/schema.ts`.
+
+### Columns
+
+* `id` uuid PK
+* `ts` timestamptz NOT NULL (event time)
+* `action` text NOT NULL (enum-ish string)
+* `actor` text NOT NULL (v1 constant `"operator"`)
+* `receiptId` text NULL (when event pertains to one receipt)
+* `exportId` uuid NULL (when event pertains to an export job)
+* `savedViewId` uuid NULL (when event pertains to a saved view)
+* `payload` jsonb NOT NULL (small structured context)
+* `ip` text NULL (optional; if you already have IP access safely)
+* `userAgent` text NULL (optional; if you already have UA safely)
+
+### Indexes (v1)
+
+* index on `ts desc`
+* index on `action`
+* index on `receiptId`
+* index on `exportId`
+* index on `savedViewId`
+
+---
+
+# Event vocabulary (v1)
+
+Use these `action` strings exactly:
+
+### Saved Views
+
+* `SAVED_VIEW_CREATED`
+* `SAVED_VIEW_DELETED`
+* `SAVED_VIEW_APPLIED`
+
+### Bulk Export
+
+* `EXPORT_REQUESTED` (first POST attempt, confirm=false)
+* `EXPORT_CONFIRM_REQUIRED` (server returned 409)
+* `EXPORT_CONFIRMED` (confirm=true accepted)
+* `EXPORT_QUEUED`
+* `EXPORT_READY`
+* `EXPORT_FAILED`
+* `EXPORT_DOWNLOADED`
+
+### Compare
+
+* `COMPARE_VIEWED` (when /compare loads with left/right)
+
+### Receipt operations
+
+* `RECEIPT_EXPORTED` (single receipt export endpoint hit)
+* `RECEIPT_PROOF_OPENED` (optional; only if you explicitly log it from UI)
+* `RECEIPT_VIEWED` (optional; I recommend skipping in v1 unless you need it)
+
+**Rule:** Only log high-signal events. Don’t spam.
+
+---
+
+# Payload rules
+
+* Payload must be JSON and **small** (target < 2KB).
+* Must never include raw transcript data (you don’t store it anyway).
+* If a query/filter set is logged, log the **normalized filters** only.
+
+Examples:
+
+**SAVED_VIEW_APPLIED**
+
+```json
+{
+  "filters": { "status": "VERIFIED", "q": null, "hasForensics": true, "killSwitch": null, "pageSize": 50 }
+}
+```
+
+**EXPORT_CONFIRM_REQUIRED**
+
+```json
+{
+  "scope": "all_results",
+  "filters": { ...normalized... },
+  "riskCounts": { "pii": 12, "killSwitch": 2 }
+}
+```
+
+**COMPARE_VIEWED**
+
+```json
+{ "left": "rcpt_...", "right": "rcpt_..." }
+```
+
+---
+
+# Backend API
+
+## 1) GET `/api/audit`
+
+Authenticated (x-api-key).
+
+Query params:
+
+* `page` default 1, max 1000
+* `pageSize` default 50, allowed {50, 100, 200}
+* `action` optional exact match
+* `receiptId` optional
+* `exportId` optional
+* `savedViewId` optional
+* `q` optional substring search over `payload` (optional; can defer)
+
+Response:
+
+```json
+{
+  "items": [ { ...event } ],
+  "total": 123,
+  "page": 1,
+  "pageSize": 50,
+  "totalPages": 3
+}
+```
+
+## 2) No POST endpoint
+
+Audit events are **written server-side only** by existing routes and key UI flows (where needed). This prevents forging.
+
+---
+
+# Where to log events (exact points)
+
+## Saved Views (server/routes.ts)
+
+* After POST create succeeds → `SAVED_VIEW_CREATED`
+* After DELETE succeeds → `SAVED_VIEW_DELETED`
+* When applying a saved view is a **client event**, but v1 should still be server-trustworthy:
+
+  * **Option A (preferred):** Add a lightweight server endpoint `POST /api/saved-views/:id/apply` that only logs and returns 204 (no state change).
+  * **Option B:** Log apply client-side via existing routes? Not possible without POST. So either do A, or skip applied logging.
+
+**I recommend Option A.** It’s not “user generated audit” because it’s a server endpoint with auth and fixed action.
+
+## Bulk Export
+
+In bulk export routes + worker:
+
+* On first POST without confirm → log `EXPORT_REQUESTED`
+* If returning 409 confirm required → log `EXPORT_CONFIRM_REQUIRED`
+* On confirm accepted → log `EXPORT_CONFIRMED` then `EXPORT_QUEUED`
+* Worker:
+
+  * when job READY → log `EXPORT_READY`
+  * when FAILED → log `EXPORT_FAILED`
+* Download endpoint hit → log `EXPORT_DOWNLOADED`
+
+## Compare
+
+Client-side view event. Use the same pattern as Saved Views apply:
+
+* Add `POST /api/audit/compare-viewed`? (not great)
+* Better: add `POST /api/compare/viewed` with body `{left,right}` validated and log `COMPARE_VIEWED`.
+
+Keep it extremely strict: both IDs required, max length, no extras.
+
+## Receipt export
+
+In the existing `GET /api/receipts/:id/export`:
+
+* after auth + before streaming → `RECEIPT_EXPORTED`
+
+---
+
+# Frontend UI
+
+## New page: `/governance` OR reuse Governance page
+
+Do **not** add a new sidebar item. You already have “Governance” in the 5.
+
+Inside Governance page, add a new tab/section: **Audit Trail**
+
+### UI requirements
+
+* Table with columns:
+
+  * Time
+  * Action
+  * Target (receipt/export/view)
+  * Summary (rendered from payload)
+* Filters:
+
+  * Action dropdown
+  * Search by receiptId (input)
+  * Refresh button
+
+### Row behavior
+
+* If receiptId present → link to `/receipts/:id`
+* If exportId present → link to export status page if you have it, else show copy button
+* Provide “Copy event JSON” button (optional)
+
+### Auth banner
+
+Use the same AuthRequiredBanner logic.
+
+---
+
+# Tests (must-have)
+
+## Backend
+
+1. Events are inserted on:
+
+   * saved view create/delete
+   * export confirm required + confirmed + queued + ready
+   * export download
+   * receipt export
+2. GET `/api/audit` pagination works, ordered by ts desc
+3. Filtering by action/receiptId works
+
+## Frontend
+
+1. Governance Audit section renders events from API
+2. Filter dropdown triggers refetch
+3. ReceiptId filter works
+
+## E2E (one)
+
+* Create saved view → verify audit contains SAVED_VIEW_CREATED
+* Start export without confirm → expect EXPORT_CONFIRM_REQUIRED
+* Confirm export → expect EXPORT_QUEUED and eventually EXPORT_READY
+* Download → expect EXPORT_DOWNLOADED
+
+---
+
+# Implementation steps (file-by-file)
+
+## 1) `shared/schema.ts`
+
+* Add `audit_events` table + indexes
+
+## 2) Storage layer (DatabaseStorage)
+
+Add:
+
+* `appendAuditEvent(event)`
+* `getAuditEventsPaged(params)`
+
+Strictly internal usage; do not expose “write audit” to clients.
+
+## 3) `server/routes.ts`
+
+* Add GET `/api/audit` (paged)
+* Insert `appendAuditEvent(...)` calls into:
+
+  * saved views create/delete (and apply endpoint if you choose it)
+  * export routes + worker lifecycle
+  * receipt export endpoint
+* (Optional) add POST `/api/saved-views/:id/apply` (logs apply only)
+* (Optional) add POST `/api/compare/viewed` (logs compare view only)
+
+## 4) Frontend Governance page
+
+* Add “Audit Trail” section
+* Add query + table + filters
+
+---
+
+# Two policy choices I need you to pick (I’ll default if you don’t)
+
+1. **Log “apply saved view”** via `POST /api/saved-views/:id/apply`?
+   Default: **YES** (worth it, low risk).
+
+2. **Log compare views** via `POST /api/compare/viewed`?
+   Default: **YES** (gives governance proof).
+
+If you don’t respond, proceed with both defaults.
+
+---
+
+If you paste your existing **Governance page filename** (likely `client/src/pages/governance.tsx` or similar), I’ll map the Audit Trail UI into its existing layout (tabs/cards) without drifting your design system.

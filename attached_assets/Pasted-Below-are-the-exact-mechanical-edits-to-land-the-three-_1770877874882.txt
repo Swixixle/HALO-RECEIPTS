@@ -1,0 +1,150 @@
+Below are the **exact, mechanical edits** to land the three fixes you described. Copy/paste these changes directly.
+
+---
+
+## Fix 1 — Adapter registry typing (TS2769 + TS7006)
+
+### ✅ Goal
+
+* Stop `new Map([...])` from inferring garbage tuple types
+* Eliminate implicit `any` in the mock factory param
+* Make the registry strongly typed as `Map<ProviderName, AdapterFactory>`
+
+### Patch (adapter-registry file)
+
+Find the file that defines your adapter registry (often something like `adapter-registry.ts`, `adapters/index.ts`, etc.) and refactor to this shape:
+
+```ts
+// BEFORE: usually something like
+// export const ADAPTER_REGISTRY = new Map([
+//   ["openai", openAIAdapterFactory],
+//   ["anthropic", anthropicAdapterFactory],
+//   ["mock", (modelId) => makeMockAdapter(modelId)],
+// ]);
+
+
+// AFTER:
+import type { ProviderName, AdapterFactory } from "./types"; // adjust path if needed
+
+const entries: Array<[ProviderName, AdapterFactory]> = [
+  ["openai", openAIAdapterFactory],
+  ["anthropic", anthropicAdapterFactory],
+
+  // If you have a mock adapter factory, type the param explicitly:
+  ["mock", (modelId?: string) => makeMockAdapter(modelId)],
+];
+
+export const ADAPTER_REGISTRY: Map<ProviderName, AdapterFactory> = new Map(entries);
+```
+
+**Important detail:** that `(modelId?: string)` annotation is what kills the implicit `any` (TS7006).
+
+---
+
+## Fix 2 — `observation_type` does not exist on `AdapterObservation` (TS2551)
+
+### ✅ Goal
+
+* Stop referencing a non-existent `adapterOutput.observation_type`
+* Correctly log the *actual* observation type that triggered a violation
+
+You already identified the right source of truth: `input.observationType`.
+
+But since `enforcePolicy()` didn’t receive it, the clean fix is: **thread it through as a parameter**.
+
+---
+
+## Fix 3 — Thread `observationType` through `enforcePolicy()` (sensor-pipeline.ts)
+
+### Patch A — Update `enforcePolicy` signature
+
+In `sensor-pipeline.ts`, find:
+
+```ts
+function enforcePolicy(rawContent: string, adapterOutput: AdapterObservation) {
+  ...
+}
+```
+
+Change to:
+
+```ts
+function enforcePolicy(
+  rawContent: string,
+  adapterOutput: AdapterObservation,
+  observationType: ObservationType
+) {
+  ...
+}
+```
+
+(Use whatever your project’s observation type type alias is—`ObservationType` is the obvious one. If yours is named differently, keep the same approach.)
+
+---
+
+### Patch B — Replace the bad field usage (`adapterOutput.observation_type`)
+
+Find the line that logs the triggering type (you said line ~243) and replace the bad reference.
+
+**Before (wrong):**
+
+```ts
+adapterOutput.observation_type
+```
+
+**After (correct):**
+
+```ts
+observationType
+```
+
+Example:
+
+```ts
+logger.warn("Policy violation", {
+  observationType, // ✅ correct
+  // ...other fields
+});
+```
+
+---
+
+### Patch C — Update the call site
+
+You said the call site was around line ~324 and currently looks like:
+
+```ts
+enforcePolicy(adapterResponse.observations, adapterResponse);
+```
+
+Change to:
+
+```ts
+enforcePolicy(adapterResponse.observations, adapterResponse, input.observationType);
+```
+
+That’s it. Now logging is accurate and TypeScript is happy.
+
+---
+
+## Sanity checks (run exactly)
+
+From repo root:
+
+```bash
+npm run typecheck
+# or
+npx tsc --noEmit
+```
+
+Optional: confirm you killed the old bad field everywhere:
+
+```bash
+rg "observation_type" -n
+```
+
+It should return **zero** matches.
+
+---
+
+If you paste the **current** `enforcePolicy()` block (and the registry file snippet), I can return a **line-accurate diff** against your exact code—but the edits above are already the correct structural fix for the three errors you listed.

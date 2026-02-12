@@ -1,0 +1,181 @@
+Good — if `/health` and `/api/audit/verify` already exist, the sprint shifts from “add endpoints” to **make sure they’re *operator-truthful*, unambiguous, and regression-locked**.
+
+Below is the exact sequence I’d run now, assuming those routes are present.
+
+---
+
+## 0) First: prove the endpoints are *real* (not accidentally shadowed)
+
+Run these locally:
+
+```bash
+curl -i http://localhost:<PORT>/health
+curl -i http://localhost:<PORT>/api/health
+curl -i http://localhost:<PORT>/api/audit/verify
+```
+
+**Pass conditions**
+
+* `Content-Type: application/json` on all three (or at least on the “official” ones you intend).
+* No HTML SPA fallback.
+* `/api/audit/verify` returns a stable JSON schema.
+
+If `/health` is non-API and returns plain text, that’s fine — but then **add `/api/health`** that’s JSON for infra + UI.
+
+---
+
+## 1) Harden `/health` into two endpoints: “alive” vs “ready”
+
+Even if you already have `/health`, you want this separation:
+
+### ✅ `/api/health` (liveness)
+
+* Must be fast
+* Must not hit DB
+* Must always return JSON like:
+
+```json
+{ "status": "ok", "time": "...", "version": "..." }
+```
+
+### ✅ `/api/ready` (readiness)
+
+* Hits DB (light query)
+* Optionally checks audit head invariants cheaply
+* Returns:
+
+```json
+{
+  "status": "ok" | "degraded",
+  "db": { "ok": true },
+  "audit": { "ok": true },
+  "time": "...",
+  "version": "..."
+}
+```
+
+**Why:** liveness should never flap when DB hiccups; readiness should.
+
+---
+
+## 2) Audit verify route: make it “operator-grade”
+
+Since `/api/audit/verify` already exists, check these **four** properties:
+
+### A) It reports partial coverage *explicitly*
+
+If `limit < totalEvents`, the response must clearly show:
+
+* `partial: true`
+* `checkedEvents`
+* `totalEvents`
+
+### B) It reports where it fails
+
+On failure, return a machine-usable pointer:
+
+* `firstBadSeq` (or equivalent)
+* optionally `expectedHash` / `actualHash` if you want
+
+### C) It’s safe to run
+
+Verify route must:
+
+* avoid loading all rows into memory
+* do deterministic ordering
+* respect a maximum server-side cap even if client requests huge
+
+### D) Auth posture is intentional
+
+Decide and document:
+
+* **Public** verify? usually no.
+* **Authenticated** verify? usually yes.
+* If authenticated, make sure error is JSON not SPA HTML.
+
+**Minimum schema to standardize**
+
+```ts
+type AuditVerifyResult = {
+  ok: boolean
+  partial: boolean
+  totalEvents: number
+  checkedEvents: number
+  head?: { seq: number; hash: string }
+  firstBadSeq?: number
+}
+```
+
+If your current route differs, fine — but lock it now and treat it as a contract.
+
+---
+
+## 3) LLM boundary: enforce “snake at edges, camel inside” with tests
+
+You already have the correct conceptual boundary:
+
+* wire format uses `observation_type`
+* internal code uses `observationType`
+
+Now add **two tests** that prevent drift:
+
+### Test 1: No internal object contains `observation_type`
+
+Create a representative internal pipeline object and assert:
+
+* `!("observation_type" in obj)` recursively, or at least at key layers.
+
+### Test 2: Round-trip mapping is stable
+
+If you have conversion functions, test:
+
+* `wire -> internal -> wire` returns the same `observation_type`
+
+This is the single highest ROI “future-proof” move because it blocks regression-by-refactor.
+
+---
+
+## 4) CI: if it’s not failing builds, it doesn’t exist
+
+Even with local green tests, add CI now.
+
+**CI should run**
+
+* `pnpm/npm install`
+* `pnpm/npm run typecheck`
+* `pnpm/npm run build`
+* `pnpm/npm run test:server` (your vitest config)
+
+If `/api/audit/verify` is critical, add a **contract test** that checks its JSON keys.
+
+---
+
+## 5) One more: verify the verify route is included in `STATE.md`
+
+Update `STATE.md` so it states:
+
+* what `/api/audit/verify` guarantees
+* what it **does not** guarantee (e.g., doesn’t prove semantic truth, only integrity)
+
+This prevents “feature myth drift.”
+
+---
+
+# What I’d do next, given your note about existing routes
+
+1. **Validate output** (curl: JSON vs HTML fallback)
+2. **Normalize schemas** (`/api/health`, `/api/ready`, `/api/audit/verify`)
+3. **Add boundary drift tests** (snake/camel invariants)
+4. **Add CI** (typecheck + build + tests)
+5. **UI banner** consuming `/api/audit/verify` (Verified / Partial / Failed)
+
+---
+
+## If you paste just the outputs, I’ll tell you exactly what’s wrong
+
+Paste:
+
+1. `curl -i http://localhost:<PORT>/health`
+2. `curl -i http://localhost:<PORT>/api/audit/verify`
+
+I’ll point out any issues (headers, auth, fallback, missing partial coverage, etc.) and give you precise edits to make it operator-grade.

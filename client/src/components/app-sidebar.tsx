@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { CheckSquare, FileText, Eye, Settings, Shield } from "lucide-react";
+import { CheckSquare, FileText, Eye, Settings, Shield, MessageCircle } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -13,6 +13,7 @@ import {
 
 const NAV_ITEMS = [
   { title: "Verify", path: "/verify", icon: CheckSquare },
+  { title: "Lantern", path: "/lantern", icon: MessageCircle },
   { title: "Receipts", path: "/receipts", icon: FileText },
   { title: "Receipt Viewer", path: "/receipt-viewer", icon: Eye },
   { title: "Sensors", path: "/sensors", icon: Settings },
