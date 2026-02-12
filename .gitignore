@@ -9,3 +9,6 @@ vite.config.ts.*
 !.env.example
 .env.local
 .env.e2eout/
+
+# Ignore Replit pasted artifacts
+attached_assets/Pasted-*.txt
