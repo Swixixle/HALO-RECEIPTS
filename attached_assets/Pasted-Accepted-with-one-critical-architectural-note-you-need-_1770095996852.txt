@@ -1,0 +1,124 @@
+Accepted — with one critical architectural note you need to internalize, and one small patch request.
+
+P1 Decision
+
+✅ P1 FULLY ACCEPTED.
+You delivered the missing artifacts and proved enforcement with code pointers and thresholds.
+
+What you proved (and why it passes)
+	•	P1.1: c14n_summary present with all required fields. ✅
+	•	P1.2: Structural anomalies detector works with explicit thresholds, roles list, and non-leaky outputs. ✅
+	•	P1.3: Export endpoint returns ai-receipt/export/1.0 with required sections and transcript-mode compliance. ✅
+	•	P1.4: Transcript mode is read-only, env-driven, and enforced in API + UI. ✅
+	•	Display-only redaction and no mutation of stored raw_json demonstrated with deep-copy patterns + code pointers. ✅
+
+⸻
+
+Critical Architectural Note (not a blocker, but it must become policy)
+
+You changed schema validation to be more permissive so forensics can detect anomalies. That’s correct, but it introduces a subtle trap:
+
+You must treat schema validation as two phases
+
+Phase 1: Intake permissive (accept more shapes so you can run forensics)
+Phase 2: Verification strict (only “verified transcript” can exist if it passes strict schema)
+
+Right now you’ve effectively loosened your “input acceptability.” That’s fine only if:
+	•	A receipt can still be marked UNVERIFIED with failure_modes like SCHEMA_INVALID_STRICT if strict verification requirements fail.
+	•	based_on and integrity_context prevent pseudo-verification (you already have this).
+
+Directive for P2: formalize this in code as:
+	•	parseCapsulePermissive()
+	•	validateCapsuleStrictForVerification()
+
+…and ensure based_on: verified_transcript is impossible unless strict validation passes.
+
+⸻
+
+One Small Patch Request (P1.2 messaging hygiene)
+
+Your anomaly messages currently embed role strings (fine), but also include indices. Good.
+
+Patch request:
+	•	Add observed: { role: "admin" } as a structured field instead of embedding it only in the message string.
+	•	Keep the message human-readable, but structured data is what later tooling will rely on.
+
+Example:
+
+{
+  "code": "UNEXPECTED_ROLE",
+  "severity": "MEDIUM",
+  "index": 1,
+  "observed": { "role": "admin" },
+  "message": "Unexpected role"
+}
+
+Do this as a quick refactor; it will pay off immediately in export consumption.
+
+⸻
+
+P2 Authorization
+
+✅ Authorized to proceed to P2.
+But scope must remain tight. Here’s the next work order.
+
+P2 Scope (choose ONE track)
+
+You have two viable P2 tracks. Pick one based on what you’re trying to prove next.
+
+Track A — Chain + Key Registry (crypto hardening)
+
+Goal: move from “integrity only” to “authenticity and continuity.”
+
+Deliverables:
+	1.	Key registry
+
+	•	public_key_id → public_key mapping
+	•	UNTRUSTED_ISSUER if unknown
+	•	SIGNATURE_INVALID if fails
+
+	2.	Receipt chain verification
+
+	•	verify previous_receipt_hash_sha256
+	•	detect chain breaks
+	•	output: chain_status: GENESIS | LINKED | BROKEN | UNKNOWN
+
+	3.	Negative tests for:
+
+	•	wrong signature
+	•	unknown key
+	•	chain break
+
+Track B — Report Packs + Operator Workflow (product hardening)
+
+Goal: make this usable as a public tool without leaking sensitive content.
+
+Deliverables:
+	1.	“Export pack” as a downloadable file (JSON + optional PDF rendering later)
+	2.	Transcript mode defaults to redacted in production
+	3.	“Public share link” that displays facts + forensics only (no transcript) unless auth
+
+⸻
+
+Hard constraint for P2
+
+🚫 Do not add LLM integration yet.
+The moment you do, you introduce new attack surface and a new epistemic layer. We’ll do it later — after key registry + chain or operator workflows are stable.
+
+⸻
+
+Copy/paste directive to your Replit agent (P2 kickoff)
+
+Pick one track and paste exactly:
+
+Track A kickoff
+
+Proceed with P2 Track A only: implement Ed25519 signature verification with a key registry (public_key_id → key), output signature_status VALID/INVALID/UNTRUSTED_ISSUER, and implement receipt chain verification (previous_receipt_hash_sha256) producing chain_status. Add positive + negative tests for unknown key, invalid signature, and chain break. Do not add LLMs or schema v1.1.
+
+Track B kickoff
+
+Proceed with P2 Track B only: implement export pack download flow, enforce production default TRANSCRIPT_MODE=redacted, and create a public share route that displays Verifiable Facts + Forensic Signals only (no transcript) unless authenticated. Add tests proving transcript is never exposed on public route. Do not add LLMs or schema v1.1.
+
+⸻
+
+If you tell me which P2 track you want, I’ll tighten it further into exact endpoints, schemas, and acceptance tests.

@@ -1,0 +1,123 @@
+Good. Now we accept the Share Pack upgrade — but we’re not done. There are two gaps to close so this doesn’t become “trust theater”:
+	1.	Prove the share pack can be verified by someone else (independent verification)
+	2.	Make milestone logging harder to “forget” (coverage)
+
+Below is the next directive to the agent. Copy/paste it exactly.
+
+⸻
+
+AGENT DIRECTIVE: SHARE PACK V1.1 — INDEPENDENT VERIFICATION + LOGGING COVERAGE
+
+Objective
+
+Turn the share pack into something a third party (another LLM, a researcher, or a reviewer) can verify without any access to source code or secrets, and tighten milestone logging so it updates reliably.
+
+⸻
+
+1) Independent Verification Recipe (no code required to trust us)
+
+A) Add /forensic_state/INDEPENDENT_VERIFY.md
+
+This must contain step-by-step instructions that a third party can run locally with only the share pack contents and standard tools.
+
+Required sections:
+
+1) Verify EVENT_LOG chain
+	•	Explain what prev_line_hash and line_hash are.
+	•	Provide a simple verification method using either:
+	•	node one-liner, or
+	•	python one-liner, or
+	•	shasum/openssl pipeline
+(Choose one that does not require your repo.)
+
+2) Verify “no forbidden strings”
+	•	Provide grep commands:
+	•	.replit.app, .replit.dev, x-api-key, OPENAI_API_KEY, IP regex
+	•	Explicitly define “PASS means 0 matches.”
+
+3) Verify snapshot consistency
+	•	Instructions to confirm SNAPSHOT.txt timestamp >= latest EVENT_LOG.jsonl event timestamp
+	•	Confirm STATE_MANIFEST.md matches current phase and includes last event hash
+
+Important: Use relative file paths exactly as they appear in /share_pack/.
+
+⸻
+
+2) Stronger “No IP leak” policy
+
+A) Expand forbidden patterns in build_share_pack
+
+Add detection for:
+	•	replit (case-insensitive) anywhere
+	•	http:// or https:// anywhere (optional but recommended; if you keep, require whitelist like [DEPLOYMENT_URL_REDACTED])
+	•	UUID-looking strings that are NOT in the synthetic namespace patterns (p0-, p1-, p2-, etc.)
+
+B) Add an allowlist for synthetic receipt ids
+
+Example allowlist regex:
+	•	^(p[0-9]+-|test-|synthetic-)
+Anything else becomes [RECEIPT_ID_REDACTED].
+
+Document this in REDACTION_RULES.md.
+
+⸻
+
+3) Milestone logging coverage (wire it where it matters)
+
+Right now you only wired logMilestone() into the kill switch endpoint. Not enough.
+
+Wire milestone logging into:
+	•	POST /api/verify (after successful store)
+	•	POST /api/receipts/:id/kill
+	•	POST /api/receipts/:id/observe
+	•	POST /api/receipts/:id/observe/multi
+	•	Research record creation (when consented record is written)
+	•	GET /api/research/export (export generated)
+	•	Share pack build success (share:build writes event)
+
+Each event must include:
+	•	event_type (e.g., VERIFY_STORED, KILL_SWITCH_ENGAGED, OBSERVE_CREATED, RESEARCH_RECORD_WRITTEN, RESEARCH_EXPORT_GENERATED)
+	•	evidence_ptrs (point to relevant evidence file or endpoint test artifact)
+
+Do NOT log raw receipt IDs — use redacted or synthetic id category labels only.
+
+⸻
+
+4) Add a “Proof of Update” trigger (best-effort automation)
+
+A) Add npm run proof:update
+
+This should run:
+	1.	npm run forensic:verify
+	2.	npm run state:snapshot
+	3.	npm run share:build
+And then append a final event:
+
+	•	PROOF_PACK_UPDATED
+
+So the user has a single command to refresh proof.
+
+⸻
+
+5) Deliverables
+
+Must add:
+	•	/forensic_state/INDEPENDENT_VERIFY.md
+	•	Updated REDACTION_RULES.md
+	•	Updated build_share_pack forbidden scans + stricter redaction logic
+	•	logMilestone() calls wired into endpoints listed above
+	•	new npm script: proof:update
+
+Then:
+	•	Append a log event P6_SHARE_PACK_HARDENED
+	•	Rebuild /share_pack/ and confirm share:check passes
+
+⸻
+
+STOP CONDITION
+
+Do not start any new product features. This is governance hardening only. Pause after the deliverables and report the updated event hash.
+
+⸻
+
+If you want, I can also give you a minimal python verifier snippet for the chain so it’s dead simple for reviewers.

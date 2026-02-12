@@ -1,0 +1,159 @@
+([Past chat][1])([Past chat][1])([Past chat][1])([Past chat][1])
+
+Yes — proceed with the full **P9-4 Receipts page rewrite** now. Your backend + data shape is already sufficient, and you’ve got passing scanner/public-mode tests, so this is the correct moment to ship the UI upgrade and then harden it with targeted tests.
+
+## P9-4 implementation plan (frontend-only)
+
+### 0) Branch + safety guardrails
+
+* Create a dedicated branch: `p9-4-receipts-table`
+* No backend edits. Consume:
+
+  * `GET /api/receipts` (auth, `x-api-key`)
+  * `GET /api/public/receipts/:id/proof` (public proof link)
+  * `GET /api/receipts/:id/export` (auth export)
+
+### 1) Replace `/receipts` with the P9-4 table view
+
+**Goal:** kill the old “card list” and replace with an operator-grade, dense table that supports scanning + triage.
+
+**Recommended columns (minimal but complete):**
+
+1. **Receipt ID** (monospace, copy button)
+2. **Verification** (VERIFIED / PARTIALLY_VERIFIED / UNVERIFIED badge)
+3. **Signature** (PASS/FAIL/UNKNOWN badge from `signature_status`)
+4. **Chain** (GENESIS/LINKED/BROKEN badge from `chain_status`)
+5. **Forensics** (flags derived from `forensicsJson`)
+
+   * show compact chips like: `PII`, `RISK`, `ANOM`, with counts on hover/tooltip
+6. **Kill Switch** (chip if `hindsightKillSwitch=true`)
+7. **Created** (`createdAt` formatted)
+8. **Actions**
+
+   * **View** → `/receipts/:receiptId`
+   * **Proof** → `/api/public/receipts/:id/proof` (open new tab)
+   * **Export** → calls `/api/receipts/:id/export`
+
+**Row behavior**
+
+* Clicking row opens detail **except** when clicking buttons (stop propagation).
+* Keep the existing `HaloHeader` styling language (this page should look like it belongs).
+
+### 2) Add the P9-4 controls row (filters + search + sort)
+
+You want fast triage without feature bloat.
+
+**Controls (top bar):**
+
+* Search (matches receipt_id, maybe also notes/summary if present)
+* Status filter: All / VERIFIED / PARTIALLY_VERIFIED / UNVERIFIED
+* Toggles:
+
+  * “Forensics only”
+  * “Kill switch only”
+* Sorting:
+
+  * default **Created desc**
+  * allow sorting by Created, Verification, Signature, Chain
+
+**Nice-to-have (still frontend-only):**
+
+* “Reset filters” button
+* Results count: `Showing X of 46`
+
+### 3) Forensics flag derivation (robust parsing)
+
+Given `forensicsJson` is present for 43/46, make this defensive:
+
+Derive three booleans + optional counts:
+
+* **PII** if `pii_heuristics.email_count + phone_count + ssn_count > 0` (or any key > 0)
+* **RISK** if `risk_markers.length > 0` (or non-empty map)
+* **ANOM** if `anomalies.length > 0`
+
+If `forensicsJson` is missing or invalid JSON:
+
+* Forensics column shows `—` (not “clean”)
+* Don’t crash rendering; treat as “unknown”
+
+### 4) Error/loading states that feel “enterprise”
+
+* Loading: skeleton rows (not spinner-only)
+* Auth missing/invalid (401/403): a crisp callout: “Missing/invalid API key”
+* Server error: show error banner + “Retry” button
+* Empty state: only if 0 receipts (unlikely now, but ship it)
+
+### 5) Keep navigation invariant
+
+Sidebar must stay exactly 5 items:
+
+* Verify
+* Receipts
+* Receipt Viewer
+* Sensors
+* Governance
+
+No new sidebar items for P9-4. No reordering.
+
+---
+
+## Test plan (additive, fast, high-signal)
+
+You already have 20 tests passing. Add a tight **P9-4 UI suite** that won’t be brittle.
+
+### A) “Receipts table renders” (smoke)
+
+* With valid `x-api-key`, `/receipts` loads
+* Table renders 46 rows
+* Default sort: newest first (validate first row’s `createdAt` >= last row)
+
+### B) Filters (3)
+
+* Filter VERIFIED shows 5 rows
+* Filter PARTIALLY_VERIFIED shows 12 rows
+* Filter UNVERIFIED shows 29 rows
+
+### C) Forensics + kill switch toggles (2)
+
+* “Forensics only” yields 43 rows
+* “Kill switch only” yields 2 rows (and both show kill chip)
+
+### D) Actions (3)
+
+* “View” navigates to `/receipts/:id`
+* “Proof” opens correct URL (assert link href)
+* “Export” calls `/api/receipts/:id/export` with auth header
+
+### E) Hardening (2)
+
+* If a receipt has malformed `forensicsJson`, page still renders and shows `—` for that row
+* 401/403 on `/api/receipts` shows “Missing/invalid API key” state
+
+That’s 13 tests max. If you want to keep it at 10, drop a couple of the nice-to-haves (but keep the malformed-forensics test).
+
+---
+
+## Build loop (“make, test, iterate”)
+
+Do it in this order so you never get lost:
+
+1. **Implement table rendering + badges** (no filters yet)
+2. **Add forensics flag derivation** (PII/RISK/ANOM chips)
+3. **Add filter/search bar**
+4. **Wire actions (View/Proof/Export)**
+5. **Add tests** (smoke → filters → actions → edge cases)
+6. **Polish** (skeletons, error banners, copy-to-clipboard)
+
+---
+
+## Ship criteria (P9-4 = DONE when…)
+
+* `/receipts` is table-based, not card-based
+* Columns include: statuses + forensics flags + kill switch + created + actions
+* Filters work and match your known counts (5 / 12 / 29, forensics 43, kill 2)
+* No backend changes
+* Tests pass
+
+Proceed. If you hit any weirdness (e.g., `forensicsJson` is sometimes an object vs string), implement a single normalization helper (`parseForensics(input)`) and keep the rest of the UI pure.
+
+[1]: https://chatgpt.com/c/6981a519-900c-832e-a7ee-2fc87ffcfd50 "System State Review"

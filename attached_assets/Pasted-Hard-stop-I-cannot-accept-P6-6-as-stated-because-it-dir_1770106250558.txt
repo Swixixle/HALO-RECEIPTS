@@ -1,0 +1,111 @@
+Hard stop: **I cannot accept P6.6 as stated** because it **directly contradicts your earlier guarantees and P6.5 boundaries**.
+
+### The contradiction (non-negotiable)
+
+You just wrote:
+
+* `is_storage_mode: false (transcript ALWAYS stored for verification)`
+* `transcript_always_stored: true`
+* `_contract.transcript_stored_for_integrity: true`
+
+But your system’s declared guarantees and matrix say:
+
+* **“No raw transcripts”** (System State Manifest)
+* **“Transcript storage: NO — Never exported, hidden mode available”** (Capability Matrix)
+* P6.5: **`llmObservations` stores observation output, NOT transcript** and boundaries are enforced.
+
+If transcripts are “always stored for verification,” then “Transcript storage: NO” becomes false, and the “No raw transcripts” guarantee collapses.
+
+This isn’t a wording nit. Reviewers will treat it as either:
+
+1. a spec breach, or
+2. an admission of hidden transcript retention.
+
+Either way it’s a red flag.
+
+---
+
+## What to change to make P6.6 acceptable (minimal, surgical)
+
+### 1) Fix the TRANSCRIPT_MODE contract language
+
+You want:
+
+* **Display mode** controls what is *returned*.
+* **Storage mode** should be **false because transcripts are not persisted**.
+
+Replace the problematic fields with something consistent with your guarantees:
+
+* `is_display_mode: true` ✅ (fine)
+* `is_storage_mode: false` ✅ (fine, but your note must match)
+* **`transcript_always_stored: false`**
+* **`transcript_never_stored: true`**
+* **`integrity_material_stored: true`** (hash/c14n/signature artifacts only)
+
+And in `_contract`, change:
+
+* `transcript_stored_for_integrity: true` ❌
+  to one of these (pick one canonical phrasing and standardize it everywhere):
+
+**Option A (cleanest):**
+
+* `transcript_persisted: false`
+* `integrity_proofs_persisted: true` (hash/signature/chain metadata)
+
+**Option B (explicit):**
+
+* `raw_transcript_persisted: false`
+* `canonical_hash_persisted: true`
+
+### 2) Reconcile with “Hidden mode available”
+
+“Hidden mode” cannot mean “stored but hidden.” To stay consistent, define it as:
+
+* hidden mode = **client/UI redaction** + **ephemeral processing only**
+* storage = **never stores raw transcript**, only derived integrity artifacts
+
+So “TRANSCRIPT_MODE” should be described as **rendering/redaction semantics**, not retention semantics.
+
+### 3) Update tests accordingly
+
+Your 12 contract tests currently *passed while asserting transcript storage is true*, so they’re testing the wrong promise.
+
+Update/replace tests to assert:
+
+* contract explicitly indicates **no transcript persistence**
+* verify endpoint never returns raw transcript
+* any “integrity” claim references **hash/c14n/signature**, not transcript retention
+
+### 4) Emit a corrective forensic_state event
+
+Because you already logged:
+
+* `P6_6_PUBLIC_CONTRACT_HARDENED`
+
+…you should log a follow-up corrective event rather than rewriting history:
+
+* `P6_6_PUBLIC_CONTRACT_CORRECTED`
+* last-line hash (full 64 hex)
+
+This protects the audit trail: “we found and fixed a contract contradiction.”
+
+---
+
+## Everything else in P6.6 looks directionally right
+
+Assuming the above is fixed, the rest is solid:
+
+* canonical error taxonomy + deterministic envelope ✅
+* rate limit headers on all responses + Retry-After on 429 ✅
+* consistent public contract metadata ✅
+* migrating `checkRequestSize` to canonical errors ✅
+
+But **you must remove any implication that raw transcripts are stored**.
+
+---
+
+## Immediate next step
+
+Implement the contract field corrections + test updates + corrective event.
+
+Once you paste the corrected `_contract` block (and the new event/hash), I’ll re-evaluate P6.6 for approval.

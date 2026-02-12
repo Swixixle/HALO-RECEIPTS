@@ -1,0 +1,154 @@
+Stop. You’re doing it again: “reviewed and approved” + “evidence saved” without showing me the artifacts.
+
+Also: your chain hash formula is currently wrong for a forensic chain. It’s too weak and it’s not anchored to the immutable transcript. If you ship that, someone can rebind meaning across receipts.
+
+So: P2 is NOT accepted yet. We are in P2 corrective mode.
+
+⸻
+
+P2 Gate Status
+
+⛔ P2 REJECTED (for now) for two reasons:
+
+1) Missing evidence artifacts in the chat
+
+You must paste the P2 evidence outputs here (like P0/P1). A file path in your repo is not evidence.
+
+2) Chain hash design flaw (security/forensics)
+
+You wrote:
+
+Chain hash formula: SHA256 of {receipt_id, platform, captured_at, transcript_hash_sha256}
+
+This is not acceptable as a chain anchor.
+
+Why it fails
+	•	It’s not tied to the actual canonical transcript, only to whatever transcript_hash_sha256 is claimed to be.
+	•	It’s not tied to issuer identity (key id) or signature.
+	•	It’s vulnerable to receipt-id games and reissuance ambiguity.
+	•	It doesn’t define whether the chain link is immutable once signed.
+
+Correct approach
+
+A receipt’s link hash must be derived from the same immutable object the signature attests to.
+
+Use one of these two options (pick one now, do not invent a third):
+
+Option A (recommended): Chain on the signed capsule hash
+
+Compute:
+
+receipt_hash = SHA256(c14n(capsule_core))
+
+Where capsule_core is the canonicalized JSON containing at least:
+	•	schema
+	•	receipt_id
+	•	platform
+	•	captured_at
+	•	transcript (or transcript_hash + canonicalization spec)
+	•	previous_receipt_hash
+	•	public_key_id
+	•	(optionally) redactions metadata
+
+Then:
+	•	previous_receipt_hash_sha256 must equal the prior receipt’s receipt_hash.
+
+Signature verifies capsule_core, so chain integrity inherits signature integrity.
+
+Option B: Chain on the signature payload hash
+
+If signature is over a payload signed_payload, then:
+
+receipt_hash = SHA256(signed_payload_bytes)
+
+Same linkage rule.
+
+⸻
+
+Required P2 Fixes (scope stays Track A)
+
+Before any acceptance:
+
+P2.F1 — Redefine chain hash and recompute tests
+	•	Replace your chain hash formula with Option A (or B).
+	•	Update chain verification module accordingly.
+	•	Add explicit fields:
+	•	receipt_hash_sha256 in verify-result
+	•	chain.expected_previous_hash
+	•	chain.observed_previous_hash
+	•	chain.link_match: boolean
+
+P2.F2 — Make signature verification unambiguous
+
+You listed statuses including SKIPPED. That’s dangerous. In a forensic pipeline, “skipped” is indistinguishable from “forgot to verify.”
+
+Replace:
+	•	SKIPPED → remove
+Keep only:
+	•	VALID
+	•	INVALID
+	•	UNTRUSTED_ISSUER
+	•	NO_SIGNATURE (only if signature block missing)
+
+If a caller requests “skip signature,” respond with:
+	•	verification_status: UNVERIFIED
+	•	failure_modes: ["SIGNATURE_NOT_VERIFIED"]
+
+No silent bypass.
+
+P2.F3 — Tighten verification_status logic
+
+Your table is close but incomplete. It must be deterministic:
+	•	If hash_match is false → UNVERIFIED regardless of anything else.
+	•	Else if signature_status is INVALID → UNVERIFIED
+	•	Else if chain_status is BROKEN (and previous hash was provided) → UNVERIFIED
+	•	Else if signature_status is VALID AND (chain ok or genesis) → VERIFIED
+	•	Else (hash ok, but signature missing/untrusted) → PARTIALLY_VERIFIED
+
+Also:
+	•	Chain is NOT_CHECKED only if previous hash is null/absent AND caller disabled chain checking explicitly (which we should not expose publicly yet). Otherwise chain should always be checked.
+
+⸻
+
+P2 Evidence Packet (must paste into chat)
+
+Once you apply fixes, paste:
+
+A) Positive test: VALID sig + LINKED chain + hash_match true
+
+Raw /api/verify response JSON containing:
+	•	signature_status: VALID
+	•	receipt_hash_sha256 present
+	•	chain_status: LINKED
+	•	link_match: true
+	•	verification_status: VERIFIED
+
+B) Unknown key test
+	•	signature_status: UNTRUSTED_ISSUER
+	•	verification_status: PARTIALLY_VERIFIED (if hash ok + chain ok)
+
+C) Invalid signature test
+	•	signature_status: INVALID
+	•	verification_status: UNVERIFIED
+
+D) Chain break test
+
+previous hash references missing receipt:
+	•	chain_status: BROKEN
+	•	verification_status: UNVERIFIED
+
+E) Genesis test
+	•	chain_status: GENESIS
+	•	if sig valid + hash ok → VERIFIED (or PARTIALLY if untrusted/no sig)
+
+⸻
+
+Copy/paste directive to your Replit agent
+
+Use this verbatim:
+
+P2 corrective mode. Fix chain hash design: chain must link to prior receipt_hash where receipt_hash = sha256(canonicalized signed capsule core). Add receipt_hash_sha256 to verify-result and chain fields expected_previous_hash/observed_previous_hash/link_match. Remove signature status SKIPPED; do not allow silent bypass. Tighten verification_status logic as specified. Re-run tests and paste P2 Evidence Packet A–E as raw JSON responses.
+
+⸻
+
+When you paste those artifacts, I’ll accept P2 and we’ll be ready for P3 (key rotation, revocation, and public verifier endpoint discipline).

@@ -1,0 +1,76 @@
+Accepted. **P6.6 is APPROVED as COMPLETE (v1.1, corrected)**.
+
+## Why this now passes (and is audit-safe)
+
+### Contract is now consistent with your guarantees
+
+Your corrected statements close the contradiction cleanly:
+
+* `raw_transcript_persisted: false` ✅ matches “No raw transcripts” + “Transcript storage: NO”
+* `integrity_proofs_persisted: true` ✅ preserves verifiability without retention
+* `ephemeral_processing_only: true` ✅ makes “hidden mode” a rendering/redaction semantics, not a retention toggle
+
+### The corrected `_contract` block is exactly what reviewers want
+
+It is:
+
+* explicit
+* machine-checkable
+* scoped to the public endpoint
+* aligned with P6.5 boundary language (observations excluded / research excluded)
+
+### Corrective event preserves the audit trail
+
+You did the right thing by *not* overwriting history.
+
+* `P6_6_PUBLIC_CONTRACT_CORRECTED`
+* hash: `165bbea9f8934112c670557e81faa4ede245e32e8ecf2ca960f2da1b9bae1513`
+
+That’s “procedural integrity” in practice.
+
+### Test suite posture improved
+
+You increased contract tests from 12 → 14 and re-ran the full suite (now 90). That’s an appropriate hardening move for a public-facing contract.
+
+---
+
+## One small wording note (optional)
+
+In your `modes.full/redacted`, the field `content_included: true` is fine **as long as “content” is strictly “response content”**, not “stored content.” Your contract already clarifies this, so you’re good—just ensure any docs/UI copy never implies retention.
+
+---
+
+## Current state
+
+You’ve now completed:
+
+* P6.2 Registry + naming
+* P6.3 Sensor pipeline + enforcement
+* P6.4 Multi-model disagreement display
+* P6.5 Storage boundary + redaction guarantees
+* P6.6 Public endpoint contract hardening (corrected v1.1)
+
+That’s a coherent, reviewable P6 lane with evidence events and test gates.
+
+---
+
+## Next directive
+
+Proceed to **P6.7 — Public Verification Proof Pack** (or whatever your directive list names next), with acceptance targets typically like:
+
+* deterministic “proof pack” response containing:
+
+  * canonical hash
+  * signature verification result
+  * chain status
+  * key governance status snapshot (active/revoked/expired)
+  * **no transcript, no observations**
+* stable schema versioning for proof pack
+* tests for:
+
+  * every canonical status path (VERIFIED / PARTIALLY_VERIFIED / UNVERIFIED)
+  * broken chain → UNVERIFIED
+  * invalid signature → UNVERIFIED
+  * rate limit + canonical error envelope
+
+If your next directive has a different label, paste it and I’ll lock the acceptance criteria to that exact scope.

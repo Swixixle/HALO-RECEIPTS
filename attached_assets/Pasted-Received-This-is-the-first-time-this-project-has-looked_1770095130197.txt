@@ -1,0 +1,103 @@
+Received. This is the first time this project has looked audit-grade instead of “app-demo-grade.”
+
+P0 Decision
+
+✅ P0 ACCEPTED. You met every acceptance criterion with concrete artifacts.
+
+Why I’m accepting
+	•	Test A (positive): hash_match: true, canonical transcript shown, computed==expected, and based_on: verified_transcript. Good.
+	•	Test B (tampered): UNVERIFIED, HASH_MISMATCH, and based_on: submitted_payload plus INTEGRITY_FAILED anomaly. Correct epistemic boundary.
+	•	Test C (PII): counts only; grep proof shows no raw PII values in forensics output. This is the key safety requirement.
+	•	Test D (UI): you have the core separation and banners working.
+
+Also: ✅ you fixed the “entropy” honesty issue by explicitly stating pattern-match base64-like (not Shannon entropy). That was mandatory.
+
+⸻
+
+One P0 follow-up (not a blocker, but must be made explicit)
+
+Your Playwright test “found PII in the page” because the Transcript tab renders raw conversation content. That’s acceptable if and only if:
+	1.	The UI labels the Transcript view as:
+
+“Raw submitted transcript (may contain sensitive information).”
+
+	2.	You have a policy-level control:
+
+	•	either “Transcript View: ON/OFF” (admin config)
+	•	or “Transcript visible only to authorized viewers” (basic auth or app-level gate)
+
+This is not about hiding; it’s about explicit operator intent. For public use, raw transcript display becomes a liability surface.
+
+Directive: add a transcript_visibility: "full" | "redacted" | "hidden" setting (app/env/config) and wire the UI accordingly. Keep default = full for internal dev; ship with redacted or hidden for public.
+
+⸻
+
+P1 Scope (controlled expansion)
+
+You’re ready. Here’s the exact P1 work order. Do not add anything else.
+
+P1.1 Canonicalization summary (forensics + verify-result)
+
+Add these fields to verify-result (or under integrity):
+	•	c14n_version: "c14n-v1"
+	•	fields_hashed: ["role","content"]
+	•	message_count_hashed: number
+	•	hash_input_bytes: number
+
+Purpose: makes hashing reproducible and reviewable without reading raw content.
+
+P1.2 Structural anomalies detector
+
+Add a deterministic detector that flags:
+	•	MISSING_ROLE
+	•	EMPTY_CONTENT
+	•	UNEXPECTED_ROLE
+	•	DUPLICATE_MESSAGE
+	•	OVERSIZE_MESSAGE (define threshold, e.g., >50k chars)
+
+Return as:
+	•	structural_anomalies: { counts..., anomalies[] }
+
+P1.3 Export report (single artifact)
+
+Create endpoint:
+
+GET /api/receipts/:receiptId/export
+
+Returns a JSON bundle:
+
+{
+  "schema": "ai-receipt/export/1.0",
+  "receipt_id": "...",
+  "exported_at": "...",
+  "capsule_raw_json": "...",        // or omit if transcript hidden mode
+  "verify_result": {...},
+  "forensics": {...},
+  "interpretations": [...]
+}
+
+And a UI button: Export Report.
+
+P1.4 Transcript handling policy (from the P0 follow-up)
+
+Implement:
+	•	TRANSCRIPT_MODE=full|redacted|hidden
+
+Behavior:
+	•	full: show transcript
+	•	redacted: show transcript with masking (emails/phones/IP) in UI only
+	•	hidden: transcript tab removed; only hashes + forensics counts remain
+
+Important: Forensics must still run on submitted payload. The redaction is display-only.
+
+⸻
+
+Replit Agent Instructions (copy/paste)
+
+Use this verbatim:
+
+Proceed to P1 only. Implement: (1) canonicalization summary fields, (2) structural anomalies detector, (3) export report endpoint + UI button, (4) TRANSCRIPT_MODE (full|redacted|hidden) gating for transcript display. Do not add LLM integration, chain verification, or new schema versions. Provide evidence outputs: one export JSON, one screenshot per transcript mode, and unit tests for anomalies detector thresholds.
+
+⸻
+
+If you want my recommendation on next public-facing hardening after P1: it’s access control + public verifier URL discipline. But we do P1 first exactly as scoped.

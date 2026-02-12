@@ -1,0 +1,335 @@
+Below is a receipt capsule design that (a) proves integrity/authenticity, (b) reveals no raw transcript, and (c) cleanly supports public “pull the record” workflows.
+
+I’m giving you:
+	1.	Schema shape (what fields exist)
+	2.	Canonical signing rules (what exactly gets signed)
+	3.	Line/event chain format (tamper-evident without content)
+	4.	Redaction commitments (prove something was present without leaking it)
+	5.	A complete example receipt you can publish as a “coded proof of ability”
+
+⸻
+
+1) Receipt Capsule v1 (ai-receipt/1.0)
+
+Top-level object
+
+{
+  "schema": "ai-receipt/1.0",
+  "receipt_id": "rct_...",
+  "created_at": "2026-02-03T07:05:08Z",
+  "issuer": { ... },
+  "algorithms": { ... },
+  "subject": { ... },
+  "policy": { ... },
+  "transcript_commitment": { ... },
+  "event_log_commitment": { ... },
+  "signature": { ... }
+}
+
+Field definitions (tight and auditable)
+
+schema
+	•	Fixed string: "ai-receipt/1.0"
+
+receipt_id
+	•	Public identifier for lookup (library key).
+	•	Recommend: rct_<base32(sha256(final_hash))[:26]> or UUIDv7.
+
+created_at
+	•	RFC3339/ISO8601 UTC timestamp.
+
+issuer
+Who attests to the receipt cryptographically.
+
+"issuer": {
+  "name": "AI Receipts",
+  "issuer_id": "issr_public",
+  "key_id": "ed25519:pub:K1",
+  "key_status": "ACTIVE"
+}
+
+	•	key_id references the public key used to verify signature (publicly resolvable by your proof bundle).
+
+algorithms
+Lock the math so it’s not implied.
+
+"algorithms": {
+  "hash": "SHA-256",
+  "signature": "Ed25519",
+  "canonicalization": "c14n-v1"
+}
+
+subject
+Optional metadata that does not leak transcript content.
+
+"subject": {
+  "session_id": "sess_2026_02_03_0001",
+  "context_class": "chat",
+  "locale": "en-US"
+}
+
+	•	No user identifiers unless explicitly intended.
+
+policy
+This is the limits contract baked into each receipt.
+
+"policy": {
+  "llm_mode": "SENSOR_ONLY",
+  "no_truth_claims": true,
+  "no_transcript_storage": true,
+  "no_export_raw_transcript": true,
+  "forbidden_claims": [
+    "truth_scoring",
+    "semantic_arbitration",
+    "behavioral_interpretation"
+  ],
+  "redaction": {
+    "enabled": true,
+    "method": "commitment_only"
+  }
+}
+
+This lets a verifier say: “This receipt asserts it is non-interpretive.”
+
+⸻
+
+2) Transcript commitment (the “coded proof” core)
+
+You need a chain that proves sequence integrity without exposing text.
+
+Design: per-line commitment chain
+
+Each entry commits to:
+	•	i (index)
+	•	prev (previous link hash)
+	•	line_hash (hash of canonicalized line payload or a redaction commitment)
+	•	optionally a salt_id (public ref to a salt policy, not the salt itself)
+
+"transcript_commitment": {
+  "type": "LINE_CHAIN_V1",
+  "line_count": 31,
+  "genesis_hash": "hex...",
+  "final_hash": "a3c89e...86288d9a",
+  "links": [
+    {
+      "i": 0,
+      "prev": "GENESIS",
+      "line_commit": "hex..."
+    },
+    {
+      "i": 1,
+      "prev": "hex...",
+      "line_commit": "hex..."
+    }
+  ]
+}
+
+How line_commit is computed (deterministic)
+
+Canonical line payload (not stored publicly; used at minting time):
+
+{
+  "i": 12,
+  "role": "assistant",
+  "ts": "2026-02-03T07:05:01Z",
+  "content": "<raw text or [REDACTED]>",
+  "attachments": [],
+  "meta": { "model": "masked", "channel": "chat" }
+}
+
+Canonicalize with c14n-v1 → bytes
+Compute line_hash = sha256(c14n_bytes)
+
+Then compute chain link:
+
+link_hash = sha256( prev_hash || line_hash || uint32_be(i) )
+
+Store only line_commit = link_hash.
+
+This gives:
+	•	order integrity
+	•	deletion/insertion detection
+	•	reproducible verification if content is later disclosed to authorized parties
+
+⸻
+
+3) Redaction commitments (prove presence without leaks)
+
+If you never publish raw transcript text, you still want to prove:
+	•	there was content
+	•	it had a stable commitment at the time
+
+Two modes:
+
+Mode A (simplest): “content omitted, commitment present”
+
+Your receipt publishes only chain hashes. That’s already a commitment.
+
+Mode B (stronger): per-line redaction markers
+
+Add a flag per line indicating content withheld:
+
+{
+  "i": 12,
+  "prev": "…",
+  "line_commit": "…",
+  "redacted": true,
+  "redaction_reason": "privacy"
+}
+
+No content, no lengths, no tokens. Just “withheld.”
+
+⸻
+
+4) Event log commitment (tamper-evident operational trail)
+
+Separate from transcript. This proves governance events happened (key rotation, kill switch, verify runs) without exposing internals.
+
+"event_log_commitment": {
+  "type": "EVENT_LOG_CHAIN_V1",
+  "event_count": 9,
+  "final_hash": "hex...",
+  "public_events": [
+    { "type": "VERIFY_RUN", "ts": "2026-02-03T07:05:08Z" },
+    { "type": "KEY_STATUS", "ts": "2026-02-03T07:05:08Z", "status": "ACTIVE" }
+  ]
+}
+
+Keep it minimal. Do not leak infrastructure.
+
+⸻
+
+5) Signature block (what gets signed)
+
+Signing input (canonical)
+
+Sign only this object (exact bytes after canonicalization):
+
+{
+  "schema": "...",
+  "receipt_id": "...",
+  "created_at": "...",
+  "issuer": { ... },
+  "algorithms": { ... },
+  "policy": { ... },
+  "transcript_commitment": { ... },
+  "event_log_commitment": { ... }
+}
+
+Exclude signature itself (obviously).
+Canonicalize with c14n-v1.
+Sign those bytes with Ed25519.
+
+Signature object
+
+"signature": {
+  "key_id": "ed25519:pub:K1",
+  "sig": "base64...",
+  "signed_hash": "sha256(hex of canonical bytes)",
+  "status": "VALID"
+}
+
+	•	signed_hash is optional but useful for debugging and independent tooling.
+
+⸻
+
+6) Complete example receipt (publish-safe)
+
+This is syntactically valid and structurally complete. Hashes/sig are placeholders (you will replace with real outputs from your minting tool), but the shape is final.
+
+{
+  "schema": "ai-receipt/1.0",
+  "receipt_id": "rct_8n7m1k2p4v6q9w3x5z7c1b2d4e",
+  "created_at": "2026-02-03T07:05:08Z",
+  "issuer": {
+    "name": "AI Receipts",
+    "issuer_id": "issr_public",
+    "key_id": "ed25519:pub:K1",
+    "key_status": "ACTIVE"
+  },
+  "algorithms": {
+    "hash": "SHA-256",
+    "signature": "Ed25519",
+    "canonicalization": "c14n-v1"
+  },
+  "subject": {
+    "session_id": "sess_2026_02_03_0001",
+    "context_class": "chat",
+    "locale": "en-US"
+  },
+  "policy": {
+    "llm_mode": "SENSOR_ONLY",
+    "no_truth_claims": true,
+    "no_transcript_storage": true,
+    "no_export_raw_transcript": true,
+    "forbidden_claims": [
+      "truth_scoring",
+      "semantic_arbitration",
+      "behavioral_interpretation"
+    ],
+    "redaction": {
+      "enabled": true,
+      "method": "commitment_only"
+    }
+  },
+  "transcript_commitment": {
+    "type": "LINE_CHAIN_V1",
+    "line_count": 31,
+    "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "final_hash": "a3c89ec76110f779189ef1e442897a5b45f59fb9a09362751f7ba27986288d9a",
+    "links": [
+      {
+        "i": 0,
+        "prev": "GENESIS",
+        "line_commit": "1111111111111111111111111111111111111111111111111111111111111111",
+        "redacted": true,
+        "redaction_reason": "privacy"
+      },
+      {
+        "i": 1,
+        "prev": "1111111111111111111111111111111111111111111111111111111111111111",
+        "line_commit": "2222222222222222222222222222222222222222222222222222222222222222",
+        "redacted": true,
+        "redaction_reason": "privacy"
+      }
+    ]
+  },
+  "event_log_commitment": {
+    "type": "EVENT_LOG_CHAIN_V1",
+    "event_count": 3,
+    "final_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+    "public_events": [
+      { "type": "VERIFY_RUN", "ts": "2026-02-03T07:05:08Z" },
+      { "type": "KEY_STATUS", "ts": "2026-02-03T07:05:08Z", "status": "ACTIVE" },
+      { "type": "RATE_LIMIT", "ts": "2026-02-03T07:05:08Z", "policy": "P4" }
+    ]
+  },
+  "signature": {
+    "key_id": "ed25519:pub:K1",
+    "signed_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+    "sig": "BASE64_SIGNATURE_PLACEHOLDER",
+    "status": "UNVERIFIED"
+  }
+}
+
+
+⸻
+
+7) What makes this “prove ability”
+
+Once you generate one real receipt in this format (with real chain + real sig), you can publish a proof bundle:
+	•	receipt.json
+	•	issuer_pubkey.json
+	•	verify_output.json
+	•	INDEPENDENT_VERIFY.md (run instructions)
+
+Anyone can pull it and verify:
+	•	the chain is linked
+	•	the signature validates
+	•	the policy/non-capability claims are bound into what was signed
+
+No transcript needed.
+
+⸻
+
+If you want the next step, I can give you the exact verifier algorithm in pseudocode (or Node/Python) that checks this receipt shape deterministically, including canonicalization rules.

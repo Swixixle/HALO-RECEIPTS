@@ -1,0 +1,255 @@
+Below is a **drop-in directive** you can paste straight to the Replit agent. It adds a **Forensic Detectors layer** (deterministic, no model keys needed) that maximizes “show-off information” while staying inside your prime rule: **verify before interpret**.
+
+---
+
+## DIRECTIVE ADDENDUM TO REPLIT AGENT — “FORENSIC DETECTORS v1.0”
+
+**Purpose:** Maximize packet depth using deterministic computation only.
+**Rule:** Detectors must never claim truth beyond pattern evidence. No “PHI detected” claims—only “potential identifier patterns (heuristic).”
+**Placement:** Detectors output is part of **FACT**. No LLM required.
+
+---
+
+# A) New output contract: forensic detectors (add to verify-result)
+
+Extend `ai-receipt/verify-result/1.0` response with:
+
+```json
+"forensics": {
+  "schema": "ai-receipt/forensics/1.0",
+  "transcript_stats": {
+    "message_count": 0,
+    "roles": { "user": 0, "assistant": 0, "system": 0, "tool": 0, "other": 0 },
+    "chars_total": 0,
+    "chars_by_role": { "user": 0, "assistant": 0, "system": 0, "tool": 0, "other": 0 },
+    "avg_chars_per_message": 0,
+    "max_message_chars": 0,
+    "max_message_role": "assistant"
+  },
+  "timestamp_checks": {
+    "present": false,
+    "missing_count": 0,
+    "non_iso_count": 0,
+    "non_monotonic_count": 0,
+    "notes": []
+  },
+  "content_signals": {
+    "code_fence_count": 0,
+    "url_count": 0,
+    "newline_count_total": 0,
+    "non_printable_char_count": 0,
+    "high_entropy_block_count": 0
+  },
+  "risk_markers": {
+    "instructional_language": { "present": false, "count": 0 },
+    "medical_advice_language": { "present": false, "count": 0 },
+    "legal_advice_language": { "present": false, "count": 0 },
+    "financial_transaction_language": { "present": false, "count": 0 },
+    "self_harm_language": { "present": false, "count": 0 }
+  },
+  "pii_heuristics": {
+    "email_like_count": 0,
+    "phone_like_count": 0,
+    "ssn_like_count": 0,
+    "dob_like_count": 0,
+    "mrn_like_count": 0,
+    "ip_like_count": 0,
+    "notes": []
+  },
+  "anomalies": [
+    { "code": "EMPTY_MESSAGE | UNKNOWN_ROLE | HIGH_ENTROPY_BLOCK | NON_MONOTONIC_TIMESTAMPS | ...",
+      "severity": "LOW|MEDIUM|HIGH",
+      "message": "human readable"
+    }
+  ]
+}
+```
+
+**Non-negotiable semantics:**
+
+* All counts + booleans must be computed deterministically from `transcript.messages[]`.
+* No LLM. No guessing. No probabilistic “confidence.” Only *pattern presence*.
+* Never output raw PII matches by default. Only counts. If you include examples, they must be **masked** (e.g., `j***@g***.com`).
+
+---
+
+# B) Implementation tasks (add these files)
+
+Add to file layout:
+
+```
+/src/forensics.ts
+```
+
+Update:
+
+* `verify.ts` to call forensics builder and attach to verify-result
+* `schema.ts` to include forensics schema for output validation
+* DB persistence: store forensics JSON either:
+
+  * in `receipts.raw_json` only (recompute on demand), OR
+  * add new column `forensics_json TEXT` to receipts table (preferred for UI speed)
+
+**Preferred:** add `forensics_json TEXT` to `receipts` table.
+
+---
+
+# C) Deterministic detectors — exact rules
+
+## C1) transcript_stats
+
+Use only `messages[].role` and `messages[].content`.
+
+* `message_count = messages.length`
+* `roles` counts:
+
+  * normalize role to lowercase for counting
+  * user/assistant/system/tool buckets, else `other`
+* `chars_total`: sum of content length in UTF-16 JS `string.length` (deterministic)
+* `chars_by_role`: same bucket scheme
+* `avg_chars_per_message = floor(chars_total / message_count)` (0 if empty)
+* `max_message_chars` and `max_message_role`: compute max length and role bucket
+
+## C2) timestamp_checks
+
+If any message has `timestamp` field, treat timestamps as “present=true”.
+
+Rules:
+
+* `missing_count`: # messages without timestamp
+* `non_iso_count`: timestamps that fail `Date.parse()` OR do not match basic ISO regex `/^\d{4}-\d{2}-\d{2}T/`
+* `non_monotonic_count`: count instances where parsed timestamp decreases vs previous (only compare valid parseable timestamps in sequence)
+* `notes`: include short notes like “timestamps missing on 3/10 messages”
+
+## C3) content_signals
+
+Compute across all content strings:
+
+* `code_fence_count`: count occurrences of ``` (triple backticks)
+* `url_count`: count matches of `/https?:\/\/\S+/g`
+* `newline_count_total`: sum of `\n` count
+* `non_printable_char_count`: count chars in ranges `[\u0000-\u0008\u000B\u000C\u000E-\u001F]`
+* `high_entropy_block_count`:
+
+  * define “block” as any contiguous substring matching base64-ish: `/[A-Za-z0-9+/]{80,}={0,2}/g`
+  * count matches
+
+## C4) risk_markers (HEURISTIC ONLY)
+
+All of these are **keyword/phrase detectors**.
+Return `present` if count>0.
+
+* `instructional_language` keywords (case-insensitive):
+  `\b(do|follow|steps|step|click|run|execute|install|configure|must|should|need to)\b`
+
+* `medical_advice_language`:
+  `\b(dose|dosage|mg|mcg|prescribe|diagnos|symptom|treatment|contraindicat|ventilator|oxygen|ABG)\b`
+
+* `legal_advice_language`:
+  `\b(lawsuit|liable|attorney|legal advice|statute|contract|jurisdiction)\b`
+
+* `financial_transaction_language`:
+  `\b(wire|transfer|bank|routing|account number|ACH|payment|invoice|crypto|send money)\b`
+
+* `self_harm_language`:
+  keep minimal and cautious: `\b(suicide|kill myself|self harm)\b`
+
+**Important:** If self-harm marker triggers, add anomaly severity HIGH with message:
+“Self-harm language pattern matched (heuristic). Not a diagnosis.”
+
+## C5) pii_heuristics (counts only; mask if examples needed)
+
+Compute counts:
+
+* `email_like_count`: `/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig`
+* `phone_like_count`: `/\b(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g`
+* `ssn_like_count`: `/\b\d{3}-\d{2}-\d{4}\b/g`
+* `dob_like_count`: `/\b(19|20)\d{2}[-\/](0[1-9]|1[0-2])[-\/](0[1-9]|[12]\d|3[01])\b/g`
+* `mrn_like_count` (weak heuristic): `/\bMRN[:\s]?\d{6,10}\b/ig`
+* `ip_like_count`: `/\b\d{1,3}(\.\d{1,3}){3}\b/g`
+
+**Never claim “PHI.”** Always label as “Potential identifier patterns (heuristic).”
+
+## C6) anomalies list
+
+Add anomalies when:
+
+* empty content string (severity LOW)
+* unknown role bucket (LOW)
+* non-ISO timestamps present (MEDIUM)
+* non-monotonic timestamps (MEDIUM)
+* high entropy blocks > 0 (MEDIUM)
+* self-harm marker present (HIGH)
+
+---
+
+# D) API rules: detectors are allowed on UNVERIFIED
+
+Even if hash mismatches, you may still compute forensics on the submitted transcript, but label anomaly:
+
+* `code="INTEGRITY_FAILED"` severity HIGH
+  and ensure `verification_status` rules remain unchanged.
+
+This increases “packet information” even for tampered cases, while still maintaining “verify before interpret.”
+
+---
+
+# E) UI requirements (add to receipt.ejs)
+
+In receipt detail page, add a FACT section that displays:
+
+* transcript stats
+* timestamp checks
+* content signals
+* risk markers
+* pii heuristic counts
+* anomalies list
+
+Show these regardless of verification status, but add a red banner if UNVERIFIED:
+
+> “Integrity failed: computed hash does not match expected. Treat all content as untrusted.”
+
+---
+
+# F) DB changes
+
+Add `forensics_json TEXT` to `receipts` table.
+On `/api/verify`, persist:
+
+* computed hash
+* expected hash
+* hash match
+* verification status
+* **forensics_json** (stringified)
+
+Immutability rule:
+
+* if immutable_lock=1, `/api/verify` should **not overwrite** `raw_json` or `forensics_json`.
+* Return 409 with failure mode `IMMUTABLE_LOCKED` if attempted re-verify with same receipt_id.
+
+---
+
+# G) Samples
+
+Update `samples/valid_capsule.json` and `samples/tampered_capsule.json` to include at least:
+
+* 1 URL
+* 1 code fence
+* 1 “instructional language” phrase
+* optional email-like string (masked) to test pii detector count
+
+---
+
+# Milestone deliverable requirement
+
+After completing detectors integration, output:
+
+* files created/changed
+* example `/api/verify` response excerpt showing `forensics` block populated
+* curl commands for valid + tampered tests
+
+---
+
+**END ADDENDUM.**
+
+If you paste this, the Replit agent will have everything needed to implement “maximum depth” **without inventing meaning** and without requiring OpenAI keys tonight.

@@ -1,0 +1,60 @@
+Accepted. **P6.3 is APPROVED as COMPLETE** based on the implementation report you provided.
+
+## Why this meets the P6.3 acceptance bar
+
+* **Routes now call the pipeline**, not provider-specific LLM calls → correct architectural choke point.
+* **Adapter dispatch is canonical** (`adapter.execute()`), meaning future provider expansion is truly “drop-in.”
+* **Error normalization** to a fixed set of canonical codes + HTTP mapping → auditability + predictable client behavior.
+* **Policy enforcement is mechanical and test-backed**:
+
+  * forbidden words → hard reject
+  * hedging prefix → auto-applied
+  * constant confidence statement → enforced
+  * limitations array → enforced (min 2)
+* **Kill switch is defense-in-depth** (route + pipeline) → exactly the right failure posture.
+* **Legacy model ID normalization** removes migration friction without loosening the naming contract.
+* **Test coverage is now credible** as a gate: 55 passing tests spanning registry + pipeline.
+
+Your final sentence is the key systems claim for P6:
+
+> sensors see transcript content only; no verification status or trust signals.
+
+That’s the correct boundary.
+
+---
+
+## New forensic_state event
+
+You said: “Saved progress at the end of the loop.”
+For audit parity with P6.2, you should ensure the forensic log includes a dedicated event (if it doesn’t already):
+
+* `P6_3_SENSOR_PIPELINE_READY`
+* last-line hash
+
+If you already emitted that and simply didn’t paste it here, you’re good. If not, add it—this is the kind of thing reviewers expect to exist because P6.2 did.
+
+---
+
+## Next directive to execute (no waiting)
+
+Proceed to **P6.4 — Multi-Model Disagreement Display (No Reconciliation)**.
+
+### P6.4 Acceptance Targets (tight)
+
+1. Multi-model route returns:
+
+   * per-model observation objects
+   * per-model error objects (same canonical codes)
+   * a top-level `disagreement` field that is **descriptive only**
+2. No aggregation, no ranking, no “majority vote,” no resolution language.
+3. UI/output copy uses strictly non-authoritative phrasing:
+
+   * “Model A said… Model B said…”
+   * never “truth,” “correct,” “verified,” “most accurate”
+4. Tests:
+
+   * same transcript → divergent outputs displayed side-by-side
+   * partial failures (one model 501 / timeout) still returns full envelope
+   * kill switch blocks the entire multi-model envelope
+
+If you execute P6.4 and report it in the same structure (Completed Items / Evidence / Event+hash / Tests), I’ll accept or flag deltas immediately.

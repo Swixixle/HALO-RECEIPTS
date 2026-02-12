@@ -1,0 +1,65 @@
+Good closeout. If everything you listed is true in-code (virtualization, memoized forensics, auth banner reuse, export safety modal, and the expanded test + E2E pass), then **P9-5 is a clean PASS** and it meaningfully raises your “operator-grade” ceiling.
+
+## Architect sign-off checklist: all green (with two sanity notes)
+
+### ✅ Performance
+
+* Virtualization is the right move at this stage (buys scale without backend churn).
+* Caching/parsing forensics once per receipt is exactly where the CPU waste was.
+
+**Sanity note:** make sure the forensics cache is keyed by **stable receipt id** (string) and invalidates when receipts refetch (or at least when `updatedAt/createdAt` changes). The easiest safe behavior is: recompute cache when the receipts array identity changes.
+
+### ✅ UX hardening
+
+* “Last updated” + refresh is a legit operator affordance.
+* Central **AuthRequiredBanner** applied across private pages is the right pattern.
+
+**Sanity note:** ensure the banner triggers on **401/403** specifically, not just “any error,” so you don’t accidentally hide real failures behind “auth.”
+
+### ✅ Export safety
+
+* Modal confirmation for PII or kill switch is correct.
+
+**Policy note:** kill switch semantics usually imply **hard block** (not confirm) unless you explicitly allow “proof-only export.” If your current behavior is “confirm + allow export even when kill switch engaged,” that’s fine **only if** your governance policy says so. If kill switch = “no export,” enforce it as disabled.
+
+### ✅ Tests
+
+If you truly have:
+
+* unit/integration green
+* E2E green
+* contract tests for `apiFetch`
+* perf smoke coverage
+
+…then you did the right thing: you didn’t just ship features; you shipped **constraints**.
+
+One thing to watch: perf smoke tests can get flaky if they rely on timing. Keep them deterministic (render + basic interactions + “did not crash”), avoid tight perf thresholds.
+
+---
+
+## What I’d do next (pick one track)
+
+### Track A — P9-6 Backend pagination (only if you expect growth soon)
+
+If receipts can realistically exceed ~10k in real ops, do pagination + server-side filtering/sorting. Virtualization helps UI, but network + memory will still grow.
+
+### Track B — Operator “Misuse Resistance”
+
+* Hard-disable export on kill switch (if that’s the policy)
+* Add “copy receipt id” everywhere (table + detail)
+* Add “open proof pack” button in detail view
+* Add “risk summary strip” at top of detail page (PII/RISK/ANOM chips + counts)
+
+### Track C — Visual regression guardrail
+
+Add a single golden screenshot test for `/receipts` so layout drift can’t sneak back in.
+
+---
+
+If you want me to be maximally surgical on the next phase, paste just:
+
+* the new `Receipts` page file,
+* `AuthRequiredBanner`,
+* and the export modal logic.
+
+I’ll do a quick “invariant audit” (kill switch semantics, auth detection, cache invalidation, and virtualization edge cases like filter → row index mismatch) and tell you if anything is still a latent footgun.

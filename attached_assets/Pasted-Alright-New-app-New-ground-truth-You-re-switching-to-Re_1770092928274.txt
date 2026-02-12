@@ -1,0 +1,403 @@
+Alright. New app. New ground truth. You’re switching to Replit. I’m now issuing one authoritative build directive to the Replit agent, end-to-end, from zero.
+
+Everything below is the spec + execution plan. The agent should follow it in order and not “wing it.”
+
+⸻
+
+DIRECTIVE TO REPLIT AGENT
+
+Project: AI Receipts — External Verifier + Receipt Store + Forensic Interrogation + Tri-Sensor Disagreement
+Mode: Forensic system, not a chatbot toy
+Prime rule: Verify before interpret. Never fake cryptography. Never narrate execution—show computed outputs.
+
+⸻
+
+0) Target outcome (what “done” means)
+
+A running Replit web app with:
+	1.	A REST API that can:
+
+	•	ingest a receipt capsule (JSON)
+	•	canonicalize transcript (c14n-v1)
+	•	compute SHA-256 hash
+	•	compare against expected hash
+	•	produce a verify-result JSON object
+	•	persist the capsule + verify-result to a DB (SQLite)
+	•	enforce immutability + hindsight kill switch at API level
+
+	2.	A minimal UI page(s) that can:
+
+	•	paste/upload capsule JSON
+	•	run verification
+	•	display VERIFIED / PARTIALLY VERIFIED / UNVERIFIED with reasons
+	•	show computed hash, expected hash, canonical transcript payload used
+	•	list receipts and open details
+	•	allow “Generate interpretation” ONLY if verified and kill switch not engaged
+	•	show FACT / INTERPRETATION / UNCERTAINTY sections
+	•	show Tri-Sensor outputs (stubbed if keys<Job API keys not provided)
+
+This is v1.0. No schema v1.1. No reconciliation logic. No fake validation.
+
+⸻
+
+1) Stack (choose this exactly)
+	•	Node.js 20
+	•	Express (or Fastify if you prefer, but keep simple)
+	•	SQLite via better-sqlite3
+	•	Zod for JSON validation
+	•	crypto built-in for SHA-256
+	•	nanoid or uuid for IDs
+	•	Frontend: simple server-rendered (EJS) or a minimal static HTML + fetch. Don’t overbuild.
+
+File layout:
+
+/src
+  server.ts
+  db.ts
+  schema.ts
+  c14n.ts
+  verify.ts
+  receipts.ts (routes)
+  interpret.ts (routes)
+  triSensor.ts (routes)
+  ui.ts (routes)
+  types.ts
+/public
+  app.js
+  styles.css
+/views
+  index.ejs
+  receipt.ejs
+
+
+⸻
+
+2) Data contracts (non-negotiable)
+
+2.1 Receipt Capsule schema (input)
+
+We accept capsule objects with:
+	•	schema: "ai-receipt/1.0"
+	•	receipt_id
+	•	platform
+	•	captured_at
+	•	capture_agent
+	•	transcript.embedded
+	•	transcript.canonicalization: "c14n-v1"
+	•	transcript.messages[] each with {role, content, timestamp?}
+	•	transcript_hash_sha256 (expected hash)
+	•	signature (we will parse but v1 only reports UNTRUSTED unless a registry is provided)
+	•	previous_receipt_hash_sha256 optional
+	•	public_verify_url optional
+
+Validation should be strict on required fields; tolerate extra fields but store them.
+
+2.2 Verifier request schema (API input)
+
+POST body:
+
+{
+  "schema": "ai-receipt/verify-request/1.0",
+  "request_id": "optional",
+  "receipt_capsule": { ...ai-receipt/1.0 capsule... },
+  "options": {
+    "verify_signature": true,
+    "verify_chain": false,
+    "key_registry_mode": "allow_untrusted"
+  }
+}
+
+2.3 Verifier result schema (API output)
+
+Return:
+
+{
+  "schema": "ai-receipt/verify-result/1.0",
+  "request_id": "…",
+  "receipt_id": "…",
+  "verification_engine": {
+    "engine_id": "replit-node-verifier/0.1.0",
+    "verified_at": "ISO-UTC"
+  },
+  "integrity": {
+    "canonicalization": "c14n-v1",
+    "canonical_transcript": "string used for hashing",
+    "computed_hash_sha256": "hex",
+    "expected_hash_sha256": "hex",
+    "hash_match": true
+  },
+  "signature": {
+    "alg": "Ed25519",
+    "public_key_id": "…",
+    "status": "VALID | INVALID | UNTRUSTED_ISSUER | SKIPPED",
+    "reason": "string"
+  },
+  "chain": {
+    "checked": false,
+    "status": "NOT_CHECKED | OK | BROKEN",
+    "reason": "string"
+  },
+  "verification_status": "VERIFIED | PARTIALLY_VERIFIED | UNVERIFIED",
+  "failure_modes": [
+    { "code": "HASH_MISMATCH | BAD_SCHEMA | …", "message": "…" }
+  ]
+}
+
+Status rules:
+	•	if hash_match is false → UNVERIFIED with HASH_MISMATCH
+	•	else if signature VALID → VERIFIED
+	•	else if signature UNTRUSTED_ISSUER → PARTIALLY_VERIFIED
+	•	else if signature INVALID → UNVERIFIED
+
+v1 signature: unless we implement a real key registry, signature should be:
+	•	UNTRUSTED_ISSUER (not invalid), with reason: “no key registry configured”
+
+Do not claim signature validity without actual verification.
+
+⸻
+
+3) Canonicalization (c14n-v1) — EXACT RULES
+
+We need deterministic hashing.
+
+Input: receipt_capsule.transcript.messages[]
+
+c14n-v1 output string = JSON string of object:
+
+{
+  "messages": [
+    {"role":"user","content":"..."},
+    {"role":"assistant","content":"..."}
+  ]
+}
+
+Rules:
+	•	Only include role and content
+	•	Normalize role to lowercase (user|assistant|system|tool allowed but store as given; for hashing include exact normalized)
+	•	Preserve content exactly (no trimming)
+	•	JSON must be stringified with stable key order (messages, then each message role, content)
+	•	No extra whitespace (use JSON.stringify on a constructed object with ordered keys)
+
+This string is what we SHA-256.
+
+⸻
+
+4) Database schema (SQLite)
+
+Create tables:
+
+4.1 receipts
+	•	id TEXT primary key (internal UUID)
+	•	receipt_id TEXT unique
+	•	platform TEXT
+	•	captured_at TEXT
+	•	raw_json TEXT (entire capsule as submitted)
+	•	expected_hash_sha256 TEXT
+	•	computed_hash_sha256 TEXT
+	•	hash_match INTEGER (0/1)
+	•	signature_status TEXT
+	•	signature_reason TEXT
+	•	verification_status TEXT
+	•	verified_at TEXT
+	•	verification_engine_id TEXT
+	•	immutable_lock INTEGER default 0
+	•	hindsight_kill_switch INTEGER default 0
+	•	created_at TEXT
+
+4.2 interpretations
+
+Append-only.
+	•	id TEXT primary key
+	•	receipt_id TEXT (FK to receipts.receipt_id)
+	•	model_id TEXT (e.g., openai:gpt-5.2, anthropic:claude, google:gemini)
+	•	kind TEXT (fact|interpretation|uncertainty|tri_sensor)
+	•	content TEXT (JSON string or markdown)
+	•	created_at TEXT
+	•	verification_status_at_time TEXT
+	•	hash_at_time TEXT
+
+Constraints:
+	•	No UPDATE allowed at API layer for interpretations. Only INSERT and SELECT.
+
+⸻
+
+5) API endpoints (implement in this order)
+
+5.1 Health
+
+GET /health → {ok:true}
+
+5.2 Verify (core)
+
+POST /api/verify
+	•	Validate verify-request schema
+	•	Run c14n-v1
+	•	Compute SHA-256
+	•	Compare
+	•	Determine signature status (UNTRUSTED_ISSUER unless registry configured)
+	•	Determine verification_status
+	•	Return verify-result JSON
+	•	Persist into DB:
+	•	Upsert receipts by receipt_id
+	•	Set immutable_lock = 1 if status != UNVERIFIED (because we now have an audited record)
+	•	Do NOT allow later mutation of raw_json once immutable_lock = 1
+
+5.3 List receipts
+
+GET /api/receipts → summary list
+
+5.4 Get receipt detail
+
+GET /api/receipts/:receiptId → receipt row + interpretations list
+
+5.5 Toggle Hindsight Kill Switch (irreversible)
+
+POST /api/receipts/:receiptId/kill
+	•	If already true, keep true
+	•	Set hindsight_kill_switch=1
+	•	Return updated receipt
+	•	No endpoint to disable it.
+
+5.6 Add interpretation (guarded)
+
+POST /api/receipts/:receiptId/interpret
+Body:
+
+{
+  "schema":"ai-receipt/interpret-request/1.0",
+  "model_id":"openai:gpt-5.2",
+  "prompt_mode":"forensic",
+  "question":"What advice was given?",
+  "kind":"interpretation"
+}
+
+Guards:
+	•	If receipt.verification_status == UNVERIFIED → 403
+	•	If hindsight_kill_switch == 1 → 403
+	•	If immutable_lock == 0 and status is blank → 409 (must verify first)
+
+For v1, you may implement interpretation as:
+	•	Stubbed (returns “Interpretation engine not configured”)
+OR
+	•	Use OpenAI if OPENAI_API_KEY exists
+
+But if you implement OpenAI:
+	•	Must include a “VERIFIED / PARTIALLY VERIFIED” banner in the response content
+	•	Must not reconcile tri-sensor
+	•	Must store output append-only
+
+5.7 Tri-sensor (optional stub tonight)
+
+POST /api/receipts/:receiptId/tri-sensor
+	•	Produces 3 outputs:
+	•	interpreter
+	•	summarizer
+	•	claim extractor
+	•	If no keys, return stub outputs and mark as UNCERTAINTY: sensors unavailable
+	•	Store as kind="tri_sensor" record with disagreement_detected boolean in the JSON
+
+No reconciliation logic. Only side-by-side and mismatch flags.
+
+⸻
+
+6) UI pages (minimal)
+
+6.1 Home /
+	•	textarea to paste capsule JSON
+	•	“Verify & Save” button
+	•	show verify-result panel after response
+	•	link to receipt detail
+
+6.2 Receipt list /receipts
+	•	list receipts with status badges
+
+6.3 Receipt detail /receipts/:receiptId
+
+Sections:
+	•	Verification summary (computed vs expected hash, signature status, failure modes)
+	•	Immutable lock status
+	•	Kill switch status + button “Engage Kill Switch” (only if not already engaged)
+	•	FACT / INTERPRETATION / UNCERTAINTY tabs (render interpretations filtered by kind)
+	•	Tri-sensor panel (if any)
+
+UI must hide/disable “Interpret” buttons if:
+	•	UNVERIFIED
+	•	kill switch engaged
+
+⸻
+
+7) Non-bypassable rules (API-level enforcement)
+
+The agent must enforce these in code, not UI:
+	1.	If immutable_lock=1:
+
+	•	Reject any attempt to update raw_json or verification fields except via /api/verify producing a new record version strategy (v1: simply disallow updates)
+
+	2.	Interpretations:
+
+	•	no UPDATE / DELETE routes
+	•	append-only inserts only
+
+	3.	Kill switch:
+
+	•	once set, cannot be unset
+
+⸻
+
+8) Sample test receipts (generate internally)
+
+Create two JSON files in repo:
+	•	samples/valid_capsule.json
+	•	samples/tampered_capsule.json (one character changed in assistant content, leaving expected hash unchanged)
+
+When you run /api/verify on tampered:
+	•	must return UNVERIFIED, HASH_MISMATCH
+
+⸻
+
+9) Build order (the agent must follow)
+	1.	Initialize Node project, install deps
+	2.	Implement SQLite DB + migrations (auto-run at start)
+	3.	Implement schema validation with Zod
+	4.	Implement c14n-v1 and SHA-256 computation
+	5.	Implement /api/verify end-to-end + persistence
+	6.	Implement receipt list/detail endpoints
+	7.	Implement kill switch endpoint
+	8.	Implement minimal UI
+	9.	Add interpretation stub
+	10.	Add tri-sensor stub
+	11.	Confirm sample tests
+
+⸻
+
+10) Acceptance checklist (must pass)
+	•	Verifier returns computed hash and canonical transcript string
+	•	Tampered capsule returns UNVERIFIED with HASH_MISMATCH
+	•	A verified receipt cannot have its raw JSON edited via any route
+	•	Kill switch cannot be undone and blocks interpretation routes
+	•	Interpretations are append-only in DB (no updates)
+	•	UI reflects these guards
+
+⸻
+
+11) You (Replit agent) must respond with
+
+When you finish each milestone, output:
+	•	what files you created/changed
+	•	which endpoints are working
+	•	how to run the sample verify tests (curl commands)
+
+No vague narration. Concrete outputs.
+
+⸻
+
+NOW: Start building
+
+Proceed in the build order above. Begin with project initialization + DB + /api/verify first.
+
+⸻
+
+If you want one extra acceleration decision:
+Do OpenAI integration later. Tonight, ship the verifier + storage + forensic UI. That’s the load-bearing skeleton.
+
+GO.
