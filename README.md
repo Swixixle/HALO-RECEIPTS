@@ -77,9 +77,9 @@ The application will start on port 5000 (http://localhost:5000)
 - **Interpretation System**: Categorized as FACT, INTERPRETATION, or UNCERTAINTY (append-only)
 - **Tri-Sensor Analysis**: Parallel analysis with interpreter, summarizer, and claim extractor
 
-## Contributing
+## About This Project
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+This project serves as a technical demonstration of building a forensic verification system for AI conversations. It showcases full-stack development skills, cryptographic implementation, and system architecture design.
 
 ## License
 
