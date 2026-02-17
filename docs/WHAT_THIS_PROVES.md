@@ -1,4 +1,4 @@
-# What AI Receipts Proves (and What It Does Not)
+# What HALO-RECEIPTS Proves (and What It Does Not)
 
 > **Schema Version:** ai-receipt/proof-pack/1.0
 

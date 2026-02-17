@@ -2,7 +2,7 @@
 
 **Schema Version:** threat-model/2.0  
 **Last Updated:** 2026-02-12  
-**Scope:** AI Receipts Forensic Verification System
+**Scope:** HALO-RECEIPTS Forensic Verification System
 
 ## P7.0 Scope Lock
 

@@ -1,4 +1,4 @@
-# AI Receipts: Non-Goals & Boundaries
+# HALO-RECEIPTS: Non-Goals & Boundaries
 
 **Version**: 0.2.0  
 **Last updated**: 2026-02-12
@@ -7,7 +7,7 @@
 
 ## What This System Does
 
-AI Receipts provides **cryptographic integrity verification** for AI conversation
+HALO-RECEIPTS provides **cryptographic integrity verification** for AI conversation
 transcripts. It answers one question definitively:
 
 > "Has this transcript been altered since it was recorded?"
@@ -21,7 +21,7 @@ audit trails, and external anchoring to independent trust boundaries.
 
 ### 1. Truth Judgments
 
-AI Receipts **never** evaluates whether an AI's output is factually correct,
+HALO-RECEIPTS **never** evaluates whether an AI's output is factually correct,
 ethically sound, or appropriate. Verification status (PASS/FAIL) refers exclusively
 to data integrity, not semantic truth.
 
@@ -38,7 +38,7 @@ making quality judgments.
 
 ### 3. Content Moderation
 
-AI Receipts does not filter, flag, or block AI-generated content. Forensic detectors
+HALO-RECEIPTS does not filter, flag, or block AI-generated content. Forensic detectors
 (risk keywords, entropy analysis, PII heuristics) generate integrity context for
 forensic analysis, not content moderation decisions. Detection of sensitive patterns
 does not trigger any automated action.
@@ -52,7 +52,7 @@ verification are outside scope.
 
 ### 5. Access Control / Authorization
 
-AI Receipts uses API key authentication for endpoint protection but does not
+HALO-RECEIPTS uses API key authentication for endpoint protection but does not
 implement user identity management, role-based access control, or multi-tenant
 isolation. It is an operator-facing tool, not an end-user platform.
 
@@ -67,13 +67,13 @@ offers.
 
 While the REGULATORY_ALIGNMENT.md document maps capabilities to regulatory
 frameworks (21 CFR Part 11, HIPAA, SOC 2, etc.), the system itself does not
-certify compliance. Organizations must independently assess how AI Receipts
+certify compliance. Organizations must independently assess how HALO-RECEIPTS
 fits within their compliance programs.
 
 ### 8. Blockchain / Distributed Ledger
 
 The hash chain and checkpoint system may resemble blockchain patterns, but
-AI Receipts is a centralized, single-operator system. It does not use
+HALO-RECEIPTS is a centralized, single-operator system. It does not use
 distributed consensus, proof-of-work/stake, or decentralized validation.
 External anchoring (S3 WORM, RFC3161 TSA) provides independent trust
 boundaries without decentralization.
@@ -112,7 +112,7 @@ expected security lifetime of these algorithms.
 
 ### Single-Operator Model
 
-AI Receipts assumes a single trusted operator. It protects against post-hoc
+HALO-RECEIPTS assumes a single trusted operator. It protects against post-hoc
 tampering (someone modifying records after the fact) but does not protect against
 a malicious operator who controls the signing keys and could forge records from
 the start. External anchoring partially mitigates this by providing independent

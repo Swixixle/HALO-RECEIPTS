@@ -30,7 +30,7 @@ function main() {
         type: "application",
         name: "ai-receipts-verifier",
         version: version.semver,
-        description: "Standalone offline verifier for AI Receipts forensic packs",
+        description: "Standalone offline verifier for HALO-RECEIPTS forensic packs",
         purl: `pkg:npm/ai-receipts-verifier@${version.semver}`,
         bom_ref: "ai-receipts-verifier",
       },

@@ -1,4 +1,4 @@
-# AI Receipts API Guide
+# HALO-RECEIPTS API Guide
 
 > **How to Verify a Receipt**
 

@@ -1,8 +1,8 @@
-# AI Receipts: Executive Summary
+# HALO-RECEIPTS: Executive Summary
 
 ## What It Is
 
-AI Receipts is a forensic verification system that provides cryptographic proof that records of AI conversations have not been tampered with. Think of it as a tamper-evident seal for AI interaction logs.
+HALO-RECEIPTS is a forensic verification system that provides cryptographic proof that records of AI conversations have not been tampered with. Think of it as a tamper-evident seal for AI interaction logs.
 
 ## The Problem
 

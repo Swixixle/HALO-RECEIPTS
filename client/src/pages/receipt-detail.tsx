@@ -133,7 +133,7 @@ export default function ReceiptDetail() {
             <div className="flex items-center gap-3">
               <Shield className="h-8 w-8 text-primary" />
               <div>
-                <h1 className="text-xl font-semibold tracking-tight">AI Receipts</h1>
+                <h1 className="text-xl font-semibold tracking-tight">HALO-RECEIPTS</h1>
                 <p className="text-sm text-muted-foreground">Forensic Verification System</p>
               </div>
             </div>

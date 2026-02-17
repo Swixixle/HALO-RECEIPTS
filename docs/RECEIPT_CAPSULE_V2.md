@@ -54,7 +54,7 @@ This document describes an enhanced receipt capsule design that:
 
 ```json
 {
-  "name": "AI Receipts",
+  "name": "HALO-RECEIPTS",
   "issuer_id": "issr_public",
   "key_id": "ed25519:pub:K1",
   "key_status": "ACTIVE"

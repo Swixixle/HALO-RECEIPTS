@@ -3,7 +3,7 @@
 Version: 1.0
 Last Updated: 2026-02-12
 
-This document describes the cryptographic primitives used by AI Receipts, the abstraction boundaries that enable algorithm migration, and the roadmap for post-quantum cryptography (PQC) readiness.
+This document describes the cryptographic primitives used by HALO-RECEIPTS, the abstraction boundaries that enable algorithm migration, and the roadmap for post-quantum cryptography (PQC) readiness.
 
 ---
 

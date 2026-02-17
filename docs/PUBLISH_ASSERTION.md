@@ -1,6 +1,6 @@
 # Publish Assertion (P8)
 
-This release asserts that AI Receipts operates strictly within the capabilities and limits documented herein.
+This release asserts that HALO-RECEIPTS operates strictly within the capabilities and limits documented herein.
 
 No undocumented features, interpretive authority, or hidden data flows are present.
 

@@ -1,7 +1,7 @@
-# AI Receipts - Forensic Verification System
+# HALO-RECEIPTS - Forensic Verification System
 
 ## Overview
-AI Receipts is a forensic verification system designed to provide cryptographic verification, immutable storage, and forensic analysis for AI conversation transcripts. Its core purpose is to ensure the integrity and authenticity of AI interactions, enabling detailed forensic examination and preventing tampering. The project aims to establish a trusted framework for AI accountability and transparency.
+HALO-RECEIPTS is a forensic verification system designed to provide cryptographic verification, immutable storage, and forensic analysis for AI conversation transcripts. Its core purpose is to ensure the integrity and authenticity of AI interactions, enabling detailed forensic examination and preventing tampering. The project aims to establish a trusted framework for AI accountability and transparency.
 
 ## User Preferences
 Not specified.

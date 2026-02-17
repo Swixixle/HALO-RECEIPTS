@@ -6,7 +6,7 @@
 
 ## 10-Row Compliance Scan
 
-| # | Requirement | Framework | AI Receipts Capability | Status |
+| # | Requirement | Framework | HALO-RECEIPTS Capability | Status |
 |---|-------------|-----------|----------------------|--------|
 | 1 | Tamper-evident audit trail | 21 CFR 11.10(e), SOC 2 CC8.1 | SHA-256 hash chain with GENESIS anchor; any modification breaks the chain from that point forward | Implemented |
 | 2 | Electronic signatures | 21 CFR 11.50, EU AI Act Art. 12 | Ed25519 signed checkpoints at configurable intervals; `kid` in every signature enables rotation | Implemented |

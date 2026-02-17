@@ -1,6 +1,6 @@
-# AI Receipts: Start Here
+# HALO-RECEIPTS: Start Here
 
-**90-Second Overview**: AI Receipts provides cryptographic proof that AI conversation transcripts have not been tampered with. It does not claim truth about what the AI said -- only that the record is intact.
+**90-Second Overview**: HALO-RECEIPTS provides cryptographic proof that AI conversation transcripts have not been tampered with. It does not claim truth about what the AI said -- only that the record is intact.
 
 ## What This System Proves
 

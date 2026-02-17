@@ -81,14 +81,14 @@ function main() {
 }
 
 function buildReadme(): string {
-  return `# AI Receipts Forensic Pack Verifier
+  return `# HALO-RECEIPTS Forensic Pack Verifier
 
 Version: ${version.engineId}
 Commit: ${version.commit}
 
 ## What This Does
 
-Verifies AI Receipts forensic packs offline without any database access.
+Verifies HALO-RECEIPTS forensic packs offline without any database access.
 It replays the SHA-256 hash chain deterministically and verifies Ed25519
 checkpoint signatures.
 
@@ -251,7 +251,7 @@ function main() {
   }
 
   if (filteredArgs.length === 0 || filteredArgs[0] === "--help") {
-    console.log("AI Receipts Forensic Pack Offline Verifier");
+    console.log("HALO-RECEIPTS Forensic Pack Offline Verifier");
     console.log("==========================================");
     console.log("Usage: node verify.js <pack.json> [--public-key key.pem]");
     console.log("");

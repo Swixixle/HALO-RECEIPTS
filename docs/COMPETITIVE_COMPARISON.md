@@ -1,4 +1,4 @@
-# AI Receipts: Competitive Landscape
+# HALO-RECEIPTS: Competitive Landscape
 
 **Version**: 0.2.0  
 **Last updated**: 2026-02-12
@@ -7,7 +7,7 @@
 
 ## Category Definition
 
-AI Receipts occupies the intersection of **AI governance tooling** and
+HALO-RECEIPTS occupies the intersection of **AI governance tooling** and
 **cryptographic audit infrastructure**. The closest comparisons fall into
 three categories:
 
@@ -22,7 +22,7 @@ system with offline-verifiable cryptographic proofs.
 
 ## Comparison Matrix
 
-| Capability | AI Receipts | AI Observability (e.g. Langfuse, Helicone) | Audit/Immutable Logs (e.g. Immudb, Amazon QLDB) | AI Governance (e.g. Credo AI, IBM OpenPages) |
+| Capability | HALO-RECEIPTS | AI Observability (e.g. Langfuse, Helicone) | Audit/Immutable Logs (e.g. Immudb, Amazon QLDB) | AI Governance (e.g. Credo AI, IBM OpenPages) |
 |---|---|---|---|---|
 | SHA-256 hash chain | Yes (c14n-v1 canonical) | No | Yes (varies) | No |
 | Ed25519 signed checkpoints | Yes (with chain continuity) | No | No (DB-level integrity) | No |
@@ -47,18 +47,18 @@ system with offline-verifiable cryptographic proofs.
 **What they do well**: Real-time monitoring of LLM calls, token usage tracking,
 prompt/response logging, latency metrics, A/B testing of prompts, cost tracking.
 
-**Where AI Receipts differs**:
+**Where HALO-RECEIPTS differs**:
 
-- Observability platforms trust their own database. AI Receipts produces
+- Observability platforms trust their own database. HALO-RECEIPTS produces
   cryptographic proofs that a third party can verify without trusting anyone.
-- Observability platforms evaluate output quality (scoring, evals). AI Receipts
+- Observability platforms evaluate output quality (scoring, evals). HALO-RECEIPTS
   explicitly avoids truth judgments, providing integrity verification only.
 - Observability platforms are designed for developers optimizing AI systems.
-  AI Receipts is designed for operators who need to prove records were not altered.
+  HALO-RECEIPTS is designed for operators who need to prove records were not altered.
 - No observability platform produces a standalone artifact that can be independently
   verified years later without access to the original system.
 
-**Complementary**: AI Receipts can ingest transcripts logged by observability
+**Complementary**: HALO-RECEIPTS can ingest transcripts logged by observability
 platforms and provide the cryptographic integrity layer they lack.
 
 ### vs. Immutable Database Systems (Amazon QLDB, Immudb)
@@ -66,18 +66,18 @@ platforms and provide the cryptographic integrity layer they lack.
 **What they do well**: Append-only ledgers with cryptographic verification,
 SQL query interfaces, built-in tamper detection, managed infrastructure.
 
-**Where AI Receipts differs**:
+**Where HALO-RECEIPTS differs**:
 
-- QLDB/Immudb verification requires access to the running database. AI Receipts
+- QLDB/Immudb verification requires access to the running database. HALO-RECEIPTS
   verification is fully offline with a standalone binary.
-- These systems provide generic immutable storage. AI Receipts adds domain-specific
+- These systems provide generic immutable storage. HALO-RECEIPTS adds domain-specific
   features: interpretation taxonomy, kill switches, LLM sensors, forensic detectors.
 - External anchoring to S3 WORM and RFC3161 TSA provides trust boundaries independent
   of the database provider. QLDB's trust boundary is Amazon itself.
-- AI Receipts publishes signed proof bundles through CI with reproducibility gates
+- HALO-RECEIPTS publishes signed proof bundles through CI with reproducibility gates
   and Sigstore signing. Database systems don't produce distributable proof artifacts.
 
-**Complementary**: AI Receipts could use QLDB or Immudb as its storage backend
+**Complementary**: HALO-RECEIPTS could use QLDB or Immudb as its storage backend
 while adding the AI-specific forensic layer on top.
 
 ### vs. AI Governance Platforms (Credo AI, IBM OpenPages, Holistic AI)
@@ -86,19 +86,19 @@ while adding the AI-specific forensic layer on top.
 detection, model documentation, compliance workflow automation, stakeholder
 reporting.
 
-**Where AI Receipts differs**:
+**Where HALO-RECEIPTS differs**:
 
-- Governance platforms focus on policy and process. AI Receipts focuses on
+- Governance platforms focus on policy and process. HALO-RECEIPTS focuses on
   cryptographic evidence that policies were followed.
-- Governance platforms produce reports and dashboards. AI Receipts produces
+- Governance platforms produce reports and dashboards. HALO-RECEIPTS produces
   verifiable proof artifacts.
-- Governance platforms require trust in the platform. AI Receipts proofs are
+- Governance platforms require trust in the platform. HALO-RECEIPTS proofs are
   independently verifiable.
-- AI Receipts does not compete on policy management, risk scoring, or bias
+- HALO-RECEIPTS does not compete on policy management, risk scoring, or bias
   detection. It provides the tamper-evident evidence layer that governance
   frameworks can reference.
 
-**Complementary**: Governance platforms define what should happen. AI Receipts
+**Complementary**: Governance platforms define what should happen. HALO-RECEIPTS
 proves what did happen, with cryptographic evidence that the record was not
 altered.
 
@@ -106,7 +106,7 @@ altered.
 
 ## Unique Positioning
 
-AI Receipts is the only system that combines:
+HALO-RECEIPTS is the only system that combines:
 
 1. **Cryptographic hash chain** with deterministic canonicalization (not just
    database-level integrity)
@@ -125,10 +125,10 @@ to regulatory alignment documentation.
 
 ## Target Audience Contrast
 
-| Audience | Typical Tool | AI Receipts |
+| Audience | Typical Tool | HALO-RECEIPTS |
 |---|---|---|
 | ML Engineer optimizing prompts | Langfuse, Helicone | Not primary audience |
-| Compliance Officer documenting controls | Credo AI, IBM OpenPages | Uses AI Receipts proofs as evidence |
+| Compliance Officer documenting controls | Credo AI, IBM OpenPages | Uses HALO-RECEIPTS proofs as evidence |
 | Security Team verifying audit integrity | Immudb, QLDB, Splunk | Direct use case |
 | Legal/Regulatory requiring tamper-proof records | Custom solutions, paper trails | Direct use case |
 | Third-party auditor needing independent verification | Manual review, attestation | Verifier release + proof bundles |
@@ -137,7 +137,7 @@ to regulatory alignment documentation.
 
 ## Limitations to Acknowledge
 
-- AI Receipts does not provide real-time monitoring or dashboards (observability gap)
+- HALO-RECEIPTS does not provide real-time monitoring or dashboards (observability gap)
 - No built-in bias detection or fairness metrics (governance gap)
 - Single-operator model limits multi-tenant enterprise deployment
 - No managed SaaS offering (self-hosted only)

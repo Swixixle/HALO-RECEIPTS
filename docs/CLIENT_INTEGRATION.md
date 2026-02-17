@@ -1,6 +1,6 @@
 # Client Integration: Proxy Pattern (Do Not Expose API Keys)
 
-AI Receipts uses an authenticated verifier endpoint for receipt submission:
+HALO-RECEIPTS uses an authenticated verifier endpoint for receipt submission:
 
 - **Privileged:** `POST /api/verify` (requires `x-api-key`)
 - **Public, read-only (no auth required):**
@@ -18,7 +18,7 @@ Browser environments cannot keep secrets. If you ship an API key to the frontend
 ### Correct Architecture
 
 ```
-Browser → Client Backend (proxy) → AI Receipts verifier
+Browser → Client Backend (proxy) → HALO-RECEIPTS verifier
 ```
 
 The client backend:
@@ -29,7 +29,7 @@ The client backend:
 ### Incorrect Architecture
 
 ```
-Browser → AI Receipts POST /api/verify
+Browser → HALO-RECEIPTS POST /api/verify
 ```
 
 This leaks the key to:
@@ -62,7 +62,7 @@ Submission is privileged by design.
 
 ### Express (Node) Proxy
 
-Create a server endpoint in your client app (example: `/api/receipts/verify`) that forwards to AI Receipts.
+Create a server endpoint in your client app (example: `/api/receipts/verify`) that forwards to HALO-RECEIPTS.
 
 **Environment variables (server-side only):**
 - `AI_RECEIPTS_API_URL` (example: `https://receipts.example.com`)
