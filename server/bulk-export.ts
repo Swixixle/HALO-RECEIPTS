@@ -109,10 +109,10 @@ function receiptToProofUrl(r: Receipt): string {
   return `${escCsv(r.receiptId)},${escCsv(proofUrl)}`;
 }
 
-const README_TEXT = `AI Receipts Bulk Export
+const README_TEXT = `HALO-RECEIPTS Bulk Export
 ======================
 
-This archive contains forensic receipt data exported from the AI Receipts verification system.
+This archive contains forensic receipt data exported from the HALO-RECEIPTS verification system.
 
 Files:
 - receipts.jsonl: One receipt per line in JSON format (includes forensics when available)

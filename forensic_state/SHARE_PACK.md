@@ -1,8 +1,8 @@
-# AI Receipts Forensic Share Pack
+# HALO-RECEIPTS Forensic Share Pack
 
 ## What This System Is
 
-AI Receipts is a forensic verification system for AI conversation transcripts. It provides cryptographic verification of receipt capsules using SHA-256 hash verification, Ed25519 digital signatures, and receipt chain linking. The system enforces strict separation between verification (cryptographic truth) and interpretation (human/LLM analysis), with LLMs operating in sensor-only mode - observing but never judging truth or validity.
+HALO-RECEIPTS is a forensic verification system for AI conversation transcripts. It provides cryptographic verification of receipt capsules using SHA-256 hash verification, Ed25519 digital signatures, and receipt chain linking. The system enforces strict separation between verification (cryptographic truth) and interpretation (human/LLM analysis), with LLMs operating in sensor-only mode - observing but never judging truth or validity.
 
 ## What It Proves
 

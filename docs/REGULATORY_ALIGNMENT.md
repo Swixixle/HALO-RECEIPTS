@@ -3,7 +3,7 @@
 Version: 1.0
 Last Updated: 2026-02-12
 
-This document maps AI Receipts forensic verification capabilities to regulatory frameworks. It describes how system features address specific compliance requirements without claiming full certification readiness.
+This document maps HALO-RECEIPTS forensic verification capabilities to regulatory frameworks. It describes how system features address specific compliance requirements without claiming full certification readiness.
 
 ---
 
@@ -24,7 +24,7 @@ This document maps AI Receipts forensic verification capabilities to regulatory 
 
 FDA regulation governing electronic records and electronic signatures.
 
-| Requirement | Section | AI Receipts Capability | Gap |
+| Requirement | Section | HALO-RECEIPTS Capability | Gap |
 |-------------|---------|----------------------|-----|
 | Audit trail with timestamps | 11.10(e) | Append-only audit log with ISO 8601 timestamps, per-event SHA-256 hash chain | None |
 | Record integrity | 11.10(a) | SHA-256 hash chain with GENESIS anchor, immutable lock on verified receipts | None |
@@ -43,9 +43,9 @@ FDA regulation governing electronic records and electronic signatures.
 
 ## HIPAA (Health Insurance Portability and Accountability Act)
 
-Applies when AI receipts contain or reference protected health information (PHI).
+Applies when HALO-RECEIPTS contain or reference protected health information (PHI).
 
-| Requirement | HIPAA Section | AI Receipts Capability | Gap |
+| Requirement | HIPAA Section | HALO-RECEIPTS Capability | Gap |
 |-------------|--------------|----------------------|-----|
 | Access controls | 164.312(a) | API key authentication, rate limiting | Individual user authentication needed |
 | Audit controls | 164.312(b) | Complete audit trail with 12 action types, IP/user-agent logging | None |
@@ -65,7 +65,7 @@ Applies when AI receipts contain or reference protected health information (PHI)
 
 AICPA framework for security, availability, processing integrity, confidentiality, and privacy.
 
-| Trust Criteria | Requirement | AI Receipts Capability | Gap |
+| Trust Criteria | Requirement | HALO-RECEIPTS Capability | Gap |
 |---------------|-------------|----------------------|-----|
 | CC6.1 | Logical access security | API key auth, rate limiting, security headers | Role granularity limited |
 | CC6.2 | Access provisioning | API key management | Key rotation automation not implemented |
@@ -87,7 +87,7 @@ AICPA framework for security, availability, processing integrity, confidentialit
 
 International standard for information security management systems (ISMS).
 
-| Control | Description | AI Receipts Capability | Gap |
+| Control | Description | HALO-RECEIPTS Capability | Gap |
 |---------|-------------|----------------------|-----|
 | A.8.1 | Asset management | Version stamping, system inventory via engineId | None |
 | A.8.9 | Configuration management | CI drift guards, deterministic canonicalization | None |
@@ -108,7 +108,7 @@ International standard for information security management systems (ISMS).
 
 European regulation establishing harmonized rules on artificial intelligence.
 
-| Requirement | Article | AI Receipts Capability | Gap |
+| Requirement | Article | HALO-RECEIPTS Capability | Gap |
 |-------------|---------|----------------------|-----|
 | Traceability | Art. 12 | SHA-256 hash chain, append-only audit trail, version stamping | None |
 | Transparency | Art. 13 | LLM sensor observations (paraphrase, ambiguity, tone) without truth claims | None |
@@ -129,7 +129,7 @@ European regulation establishing harmonized rules on artificial intelligence.
 
 Voluntary framework for managing AI system risks.
 
-| Function | Category | AI Receipts Capability | Gap |
+| Function | Category | HALO-RECEIPTS Capability | Gap |
 |----------|----------|----------------------|-----|
 | GOVERN | Accountability | Audit trail, operator action logging, governance page | Organizational policies not in scope |
 | MAP | Context analysis | Forensic detectors, LLM sensor pipeline | None |
@@ -163,4 +163,4 @@ These features support multiple regulatory frameworks simultaneously:
 
 ## Disclaimer
 
-This document describes how AI Receipts system capabilities align with regulatory requirements. It does not constitute legal advice or certification. Organizations deploying this system must conduct their own compliance assessments with qualified legal and compliance professionals. The alignment mappings reflect the system's technical capabilities as of the document version date and may require updates as regulations evolve.
+This document describes how HALO-RECEIPTS system capabilities align with regulatory requirements. It does not constitute legal advice or certification. Organizations deploying this system must conduct their own compliance assessments with qualified legal and compliance professionals. The alignment mappings reflect the system's technical capabilities as of the document version date and may require updates as regulations evolve.

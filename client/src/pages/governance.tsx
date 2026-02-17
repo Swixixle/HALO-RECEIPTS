@@ -36,10 +36,10 @@ interface AuditPagedResponse {
 }
 
 const KEY_REGISTRY = [
-  { key_id: "test-key-001", issuer_label: "AI Receipts Test", status: "ACTIVE", valid_from: "2024-01-01", valid_to: null, revoked_reason: null },
-  { key_id: "test-key-002-rotated", issuer_label: "AI Receipts Test (Rotated)", status: "ACTIVE", valid_from: "2024-06-01", valid_to: null, revoked_reason: null },
-  { key_id: "revoked-key-001", issuer_label: "AI Receipts Test", status: "REVOKED", valid_from: "2024-01-01", valid_to: "2024-03-15", revoked_reason: "Key compromise" },
-  { key_id: "expired-key-001", issuer_label: "AI Receipts Test", status: "EXPIRED", valid_from: "2023-01-01", valid_to: "2023-12-31", revoked_reason: null },
+  { key_id: "test-key-001", issuer_label: "HALO-RECEIPTS Test", status: "ACTIVE", valid_from: "2024-01-01", valid_to: null, revoked_reason: null },
+  { key_id: "test-key-002-rotated", issuer_label: "HALO-RECEIPTS Test (Rotated)", status: "ACTIVE", valid_from: "2024-06-01", valid_to: null, revoked_reason: null },
+  { key_id: "revoked-key-001", issuer_label: "HALO-RECEIPTS Test", status: "REVOKED", valid_from: "2024-01-01", valid_to: "2024-03-15", revoked_reason: "Key compromise" },
+  { key_id: "expired-key-001", issuer_label: "HALO-RECEIPTS Test", status: "EXPIRED", valid_from: "2023-01-01", valid_to: "2023-12-31", revoked_reason: null },
 ];
 
 const RATE_LIMITS = [

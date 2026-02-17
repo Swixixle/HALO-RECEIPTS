@@ -1,12 +1,12 @@
 # HALO-RECEIPTS
 
-AI Receipts - Forensic Verification System for AI Conversation Transcripts
+HALO-RECEIPTS - Forensic Verification System for AI Conversation Transcripts
 
 [![Run on Replit](https://replit.com/badge/github/Swixixle/HALO-RECEIPTS)](https://replit.com/github/Swixixle/HALO-RECEIPTS)
 
 ## Overview
 
-AI Receipts is a forensic verification system for AI conversation transcripts. It provides cryptographic verification of receipt capsules, immutable storage, and forensic analysis capabilities.
+HALO-RECEIPTS is a forensic verification system for AI conversation transcripts. It provides cryptographic verification of receipt capsules, immutable storage, and forensic analysis capabilities.
 
 For detailed documentation, see [replit.md](./replit.md)
 

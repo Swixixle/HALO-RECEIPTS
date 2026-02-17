@@ -27,7 +27,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4">
         <Link href="/">
-          <span className="font-bold text-lg" data-testid="text-logo">AI Receipts</span>
+          <span className="font-bold text-lg" data-testid="text-logo">HALO-RECEIPTS</span>
         </Link>
       </SidebarHeader>
       <SidebarContent>

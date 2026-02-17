@@ -1,4 +1,4 @@
-# STATE.md — AI Receipts System Truth
+# STATE.md — HALO-RECEIPTS System Truth
 
 *Last updated: 2026-02-12*
 

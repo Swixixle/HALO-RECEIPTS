@@ -1,4 +1,4 @@
-# SECURITY.md — AI Receipts Security Posture
+# SECURITY.md — HALO-RECEIPTS Security Posture
 
 *Last updated: 2026-02-12*
 

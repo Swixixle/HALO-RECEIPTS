@@ -67,7 +67,7 @@ function run(cmd: string): string {
 }
 
 async function main() {
-  log("=== AI Receipts Proof Run ===");
+  log("=== HALO-RECEIPTS Proof Run ===");
   log(`Output directory: ${PROOF_DIR}`);
   log(`Anchor mode: ${ANCHOR_MODE}`);
   ensureDir(PROOF_DIR);

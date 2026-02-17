@@ -38,7 +38,7 @@ pause() {
   read -r
 }
 
-section "AI Receipts Forensic Verification - Operator Demo"
+section "HALO-RECEIPTS Forensic Verification - Operator Demo"
 echo "  This system proves integrity of AI outputs without claiming semantic truth."
 echo "  It provides tamper-evidence and operator-grade verification, not truth arbitration."
 pause
