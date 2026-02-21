@@ -35,6 +35,8 @@ import { llmObservationRequestSchema, multiModelObservationRequestSchema } from 
 import { logMilestone } from "./forensic-log";
 import { logAuditVerifyResult, logAdapterError, getCounters, logReadyCheck, logVerifyLatency } from "./instrumentation";
 import { getVersionInfo } from "./version";
+import { invokeLLMWithHalo } from "./llm/invokeLLMWithHalo";
+import { haloSignTranscript } from "./llm/haloSignTranscript";
 
 const ENGINE_ID = getVersionInfo().engineId;
 
@@ -1283,21 +1285,41 @@ export async function registerRoutes(
       }
 
       const { model_id, question, kind } = parseResult.data;
-      
-      const content = `[${receipt.verificationStatus}] Interpretation Engine Stub Response:\n\nQuestion: ${question}\n\nThis is a stub response. The interpretation engine is not configured. To enable real interpretations, configure an LLM provider.`;
+
+      const rawCapsule = JSON.parse(receipt.rawJson);
+      const transcriptMessages: Array<{ role: string; content: string }> =
+        Array.isArray(rawCapsule?.transcript?.messages)
+          ? rawCapsule.transcript.messages
+          : [];
+
+      const requestPayload: Record<string, unknown> = {
+        messages: [
+          ...transcriptMessages,
+          { role: "user", content: question },
+        ],
+      };
+
+      const { outputText, provenance, haloReceipt } = await invokeLLMWithHalo(
+        { haloSignTranscript },
+        {
+          model: model_id,
+          requestPayload,
+          receiptId: receiptId as string,
+        }
+      );
 
       const interpretation = await storage.createInterpretation({
         id: randomUUID(),
         receiptId: receiptId as string,
         modelId: model_id,
         kind,
-        content,
+        content: outputText,
         createdAt: new Date().toISOString(),
         verificationStatusAtTime: receipt.verificationStatus,
         hashAtTime: receipt.computedHashSha256,
       });
 
-      res.json(interpretation);
+      res.json({ ...interpretation, provenance, haloReceipt });
     } catch (error) {
       console.error("Interpret error:", error);
       res.status(500).json({ error: "Internal server error" });
