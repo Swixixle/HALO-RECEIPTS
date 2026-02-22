@@ -1286,13 +1286,19 @@ export async function registerRoutes(
 
       const { model_id, question, kind } = parseResult.data;
 
-      const rawCapsule = JSON.parse(receipt.rawJson);
+      let rawCapsule: Record<string, unknown>;
+      try {
+        rawCapsule = JSON.parse(receipt.rawJson);
+      } catch {
+        return res.status(422).json({ error: "Receipt rawJson is invalid or corrupted — the stored receipt data cannot be parsed as JSON" });
+      }
       const transcriptMessages: Array<{ role: string; content: string }> =
         Array.isArray(rawCapsule?.transcript?.messages)
           ? rawCapsule.transcript.messages
           : [];
 
       const requestPayload: Record<string, unknown> = {
+        __endpoint: "/chat/completions",
         messages: [
           ...transcriptMessages,
           { role: "user", content: question },
