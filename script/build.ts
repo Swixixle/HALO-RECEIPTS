@@ -1,6 +1,12 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { execSync } from "child_process";
+import { resolve } from "path";
+import { fileURLToPath } from "url";
+
+const projectRoot = fileURLToPath(new URL("..", import.meta.url));
+const tscBin = resolve(projectRoot, "node_modules", ".bin", "tsc");
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -34,6 +40,20 @@ const allowlist = [
 
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
+
+  console.log("building package declarations...");
+  execSync(`${tscBin} -p tsconfig.build.json`, { stdio: "inherit" });
+
+  console.log("building package entry (ESM)...");
+  await esbuild({
+    entryPoints: ["index.ts"],
+    platform: "node",
+    bundle: true,
+    format: "esm",
+    outfile: "dist/index.js",
+    external: ["crypto"],
+    logLevel: "info",
+  });
 
   console.log("building client...");
   await viteBuild();
