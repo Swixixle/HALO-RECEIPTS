@@ -15,40 +15,8 @@
 // DO NOT ADD BUSINESS LOGIC HERE.
 // This file is strictly a transport + provenance wrapper.
 
-import { createHash, randomUUID } from "crypto";
-
-// =============================================================================
-// CANONICAL JSON HASHING
-// Recursively sort object keys before JSON.stringify, then SHA-256 hex digest
-// =============================================================================
-
-function sortedKeysStringify(obj: unknown): string {
-  if (obj === null || typeof obj !== "object") {
-    return JSON.stringify(obj);
-  }
-  if (Array.isArray(obj)) {
-    return "[" + obj.map(sortedKeysStringify).join(",") + "]";
-  }
-  const keys = Object.keys(obj as Record<string, unknown>).sort();
-  return (
-    "{" +
-    keys
-      .map(
-        (k) =>
-          JSON.stringify(k) +
-          ":" +
-          sortedKeysStringify((obj as Record<string, unknown>)[k])
-      )
-      .join(",") +
-    "}"
-  );
-}
-
-function canonicalHash(obj: unknown): string {
-  return createHash("sha256")
-    .update(sortedKeysStringify(obj), "utf8")
-    .digest("hex");
-}
+import { randomUUID } from "crypto";
+import { stableStringifyStrict, sha256Hex } from "../audit-canon";
 
 // =============================================================================
 // OUTPUT TEXT EXTRACTION (after hashing rawResponse — never before)
@@ -128,7 +96,7 @@ export async function invokeLLMWithHalo(
     tenantId: input.tenantId ?? null,
   };
 
-  const requestEnvelopeHash = canonicalHash(requestEnvelope);
+  const requestEnvelopeHash = sha256Hex(stableStringifyStrict(requestEnvelope));
 
   // Call upstream provider
   const response = await fetch(`${baseUrl}${endpoint}`, {
@@ -148,7 +116,7 @@ export async function invokeLLMWithHalo(
 
   // Capture rawResponse BEFORE any mutation or text extraction
   const rawResponse: unknown = await response.json();
-  const rawResponseHash = canonicalHash(rawResponse);
+  const rawResponseHash = sha256Hex(stableStringifyStrict(rawResponse));
 
   // Extract output text AFTER hashing rawResponse
   const outputText = extractOutputText(rawResponse);
@@ -169,7 +137,7 @@ export async function invokeLLMWithHalo(
   };
 
   // provenance_hash = sha256(canonicalize(provenanceBase))
-  const provenanceHash = canonicalHash(provenanceBase);
+  const provenanceHash = sha256Hex(stableStringifyStrict(provenanceBase));
 
   const provenance: Record<string, unknown> = {
     ...provenanceBase,
