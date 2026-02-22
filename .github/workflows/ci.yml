@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "copilot/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build:package
+
+      - name: Verify package entry resolves
+        run: node -e "import('./dist/index.js').then(m => { if (!m.HALO_RECEIPTS_CONTRACT) throw new Error('Package entry point verification failed: HALO_RECEIPTS_CONTRACT export not found'); console.log('contract version:', m.HALO_RECEIPTS_CONTRACT.contractVersion); })"
+
+      # audit-e2e.test.ts requires a running server; golden-audit-chain.test.ts requires DATABASE_URL.
+      # Both are integration tests that cannot run in CI without those services.
+      - name: Run unit tests
+        run: npx vitest run --exclude 'server/__tests__/audit-e2e.test.ts' --exclude 'server/__tests__/golden-audit-chain.test.ts'

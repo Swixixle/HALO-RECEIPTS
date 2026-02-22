@@ -15,11 +15,17 @@
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
+    "build:package": "tsx script/build-package.ts",
+    "prepare": "npm run build:package",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "test": "vitest run",
     "db:push": "drizzle-kit push",
     "lint:llm-boundary": "bash scripts/ci-llm-boundary.sh"
   },
