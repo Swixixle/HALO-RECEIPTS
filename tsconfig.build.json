@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts", "server/integration-contract.ts", "server/audit-canon.ts", "server/llm/haloSignTranscript.ts", "server/llm/invokeLLMWithHalo.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "client/**/*"]
+}
