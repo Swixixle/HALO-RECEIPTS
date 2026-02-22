@@ -28,10 +28,17 @@ function getOrCreateReceiptSigningKey(): ReceiptKeyPair {
     return activeReceiptKey;
   }
 
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "Production requires RECEIPT_SIGNING_KEY, RECEIPT_VERIFY_KEY, and RECEIPT_KEY_ID to be set. " +
+      "Ephemeral keys are not permitted in production."
+    );
+  }
+
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }) as string;
   const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" }) as string;
-  const publicKeyId = `receipt-ephemeral-${sha256Hex(publicKeyPem).slice(0, 32)}`;
+  const publicKeyId = `receipt-ephemeral-dev-${sha256Hex(publicKeyPem).slice(0, 32)}`;
 
   activeReceiptKey = { publicKeyId, publicKeyPem, privateKeyPem };
 
@@ -54,6 +61,11 @@ export interface HaloTranscriptReceipt {
   signature_alg: "Ed25519";
   public_key_id: string;
   signed_payload: string;
+}
+
+/** Reset cached key — test-only. Do not call in production code. */
+export function _resetReceiptSigningKeyForTest(): void {
+  activeReceiptKey = null;
 }
 
 export async function haloSignTranscript(
